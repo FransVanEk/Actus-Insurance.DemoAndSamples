@@ -1,0 +1,22 @@
+{
+  "scenarioSetId": "vasicek_3s_24m_seed12345",
+  "description": "3 Vasicek scenarios × 24 monthly steps (2-year horizon). Seed 12345, rate-seed 12346.",
+  "numScenarios": 3,
+  "numMonths": 24,
+  "seed": 12346,
+  "model": {
+    "type": "Vasicek",
+    "kappa": 0.15,
+    "theta": 0.04,
+    "sigma": 0.02,
+    "r0": 0.03
+  },
+  "riskFactors": [
+    {
+      "id": "USD_LIBOR_3M",
+      "type": "InterestRate",
+      "priorFile": "riskfactors/interest_rate_prior.csv",
+      "afterFile": "riskfactors/interest_rate_after.csv"
+    }
+  ]
+}

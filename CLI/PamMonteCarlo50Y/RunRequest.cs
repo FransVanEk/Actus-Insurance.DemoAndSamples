@@ -9,6 +9,52 @@ using System.Text.Json.Serialization;
 namespace PamMonteCarlo50Y;
 
 /// <summary>
+/// Per-run output configuration.  When present on a <see cref="RunRequest"/>,
+/// these settings override the global CLI reporting flags for that run only.
+/// </summary>
+public sealed class RunOutputOptions
+{
+    /// <summary>
+    /// Enable the reporting transformer (contract_summary, portfolio_by_scenario,
+    /// runs.csv, grouped summaries).  Default: <c>true</c>.
+    /// </summary>
+    [JsonPropertyName("reporting")]
+    public bool Reporting { get; set; } = true;
+
+    /// <summary>
+    /// Export <c>fact_results_long.csv</c> — one row per
+    /// (RunId, ContractId, ScenarioId) with Measure=PV and the discounted PV.
+    /// Default: <c>false</c>.
+    /// </summary>
+    [JsonPropertyName("exportPvFact")]
+    public bool ExportPvFact { get; set; } = false;
+
+    /// <summary>
+    /// Export <c>cashflow_timeseries.csv</c> — one row per
+    /// (RunId, ContractId, ScenarioId, EventDate, TimeIndex, EventType)
+    /// with UndiscountedCashflow, DiscountFactor, and DiscountedCashflow.
+    /// Produces the full contract × scenario × time cashflow detail.
+    /// Default: <c>false</c>.
+    /// </summary>
+    [JsonPropertyName("exportCashflowTimeSeries")]
+    public bool ExportCashflowTimeSeries { get; set; } = false;
+
+    /// <summary>
+    /// Maximum number of contracts to include in the fact table and cashflow
+    /// time-series export.  <c>0</c> = all contracts.  Default: <c>0</c>.
+    /// </summary>
+    [JsonPropertyName("contractSampleSize")]
+    public int ContractSampleSize { get; set; } = 0;
+
+    /// <summary>
+    /// Maximum number of scenarios to include in the fact table and cashflow
+    /// time-series export.  <c>0</c> = all scenarios.  Default: <c>0</c>.
+    /// </summary>
+    [JsonPropertyName("scenarioSampleSize")]
+    public int ScenarioSampleSize { get; set; } = 0;
+}
+
+/// <summary>
 /// A single valuation run request.  Multiple requests can be executed against
 /// the same pre-built portfolio without rebuilding it.
 ///
@@ -22,6 +68,10 @@ namespace PamMonteCarlo50Y;
 ///         the prior/after boundary.  Events at t &lt; CalcDateIndex use prior rates;
 ///         events at t &gt;= CalcDateIndex use after (projected) rates.</item>
 /// </list>
+///
+/// <b>Per-run output</b>:
+/// Set <see cref="OutputOptions"/> to control exactly which output files are
+/// written for this run (overrides the global CLI reporting flags).
 /// </summary>
 public sealed class RunRequest
 {
@@ -61,6 +111,14 @@ public sealed class RunRequest
     /// </summary>
     [JsonPropertyName("description")]
     public string Description { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Per-run output options.  When set, these override the global CLI
+    /// <c>--reporting</c> / <c>--export-fact</c> flags for this run only.
+    /// When <c>null</c>, the global CLI flags are used.
+    /// </summary>
+    [JsonPropertyName("outputOptions")]
+    public RunOutputOptions? OutputOptions { get; set; }
 
     // ── Factory helpers ──────────────────────────────────────────────
 

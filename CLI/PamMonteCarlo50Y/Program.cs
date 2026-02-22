@@ -15,13 +15,17 @@
  *   --scenarioRange 0:1000         (scenario slice)
  *   --runs      runs.json          (optional multi-run JSON file)
  *   --out       ./out              (output directory)
+ *   --input     <dir>              (load portfolio+scenarios from input directory)
+ *   --export-portfolio true        (write portfolio.csv to output dir for re-use)
  *   --help
  *
  * Run with: dotnet run --project demos/PamMonteCarlo50Y -- --help
  */
 using System.Diagnostics;
 using ActusInsurance.Core.Externals;
+using ActusInsurance.Core.Models;
 using PamMonteCarlo50Y.Reporting;
+using PamMonteCarlo50Y.Sinks;
 
 namespace PamMonteCarlo50Y;
 
@@ -32,100 +36,151 @@ internal static class Program
         var opts = ParseArgs(args);
         if (opts == null) return 1;
 
+        // ── Input-directory mode vs. synthetic generator mode ────────────
+        bool fromInputDir = !string.IsNullOrEmpty(opts.InputDir);
+
         Console.WriteLine("╔══════════════════════════════════════════════════════════════════════╗");
         Console.WriteLine("║      PAM Monte Carlo 50-Year Demo  —  ActusCoreCsharp               ║");
         Console.WriteLine("╚══════════════════════════════════════════════════════════════════════╝");
         Console.WriteLine();
-        Console.WriteLine($"  contracts    : {opts.Contracts:N0}");
-        Console.WriteLine($"  scenarios    : {opts.Scenarios:N0}");
-        Console.WriteLine($"  months       : {opts.Months}  (= {opts.Months / 12} years)");
-        Console.WriteLine($"  seed         : {opts.Seed}");
-        Console.WriteLine($"  backend      : {opts.Backend}");
-        Console.WriteLine($"  calcDateIndex: {opts.CalcDateIndex}");
-        Console.WriteLine($"  output dir   : {opts.OutDir}");
-        Console.WriteLine();
 
         var totalSw = Stopwatch.StartNew();
 
-        // ── 1. Portfolio generation ──────────────────────────────────────
-        Console.WriteLine($"[{Now()}] ─── PORTFOLIO GENERATION ────────────────────────────────");
-        var portParams = new PortfolioParams
-        {
-            NumContracts = opts.Contracts,
-            BaseDate     = new DateTime(2020, 1, 1),
-            Seed         = opts.Seed,
-        };
-        var portfolioSw = Stopwatch.StartNew();
-        var portfolio = PortfolioGenerator.Generate(portParams);
-        Console.WriteLine($"[{Now()}]   Generated {portfolio.Count:N0} contracts in {portfolioSw.ElapsedMilliseconds} ms");
+        List<PamContractTerms> portfolio;
+        VasicekRateGenerator   rates;
+        VasicekParams          vasicek;
+        RiskFactorModel        rf;
+        List<RunRequest>       runs;
+        DateTime               baseDate;
+        int                    numMonths;
 
-        // ── 2. MC rate scenario generation (Vasicek) ─────────────────────
-        Console.WriteLine($"[{Now()}] ─── VASICEK SCENARIO GENERATION ─────────────────────────");
-        var vasicek = new VasicekParams
+        if (fromInputDir)
         {
-            Kappa = 0.15,
-            Theta = 0.04,
-            Sigma = 0.02,
-            R0    = 0.03,
-        };
-        var ratesSw = Stopwatch.StartNew();
-        var rates = VasicekRateGenerator.Generate(vasicek, opts.Scenarios, opts.Months, opts.Seed + 1UL);
-        Console.WriteLine($"[{Now()}]   Generated {opts.Scenarios:N0} scenarios × {opts.Months} months in {ratesSw.ElapsedMilliseconds} ms");
-        Console.WriteLine($"[{Now()}]   Mean short rate at t=0: {rates.MeanRateAtMonth(0):P2}");
-        Console.WriteLine($"[{Now()}]   Mean short rate at t=300 (25y): {rates.MeanRateAtMonth(Math.Min(300, opts.Months - 1)):P2}");
-        Console.WriteLine($"[{Now()}]   Mean DF at t=120 (10y): {rates.MeanDfAtMonth(Math.Min(120, opts.Months - 1)):F4}");
+            // ── INPUT-DIRECTORY MODE ──────────────────────────────────────
+            Console.WriteLine($"[{Now()}] ─── LOADING FROM INPUT DIRECTORY ──────────────────────");
+            Console.WriteLine($"  input dir    : {opts.InputDir}");
+            Console.WriteLine($"  backend      : {opts.Backend}");
+            Console.WriteLine($"  output dir   : {opts.OutDir}");
+            Console.WriteLine();
 
-        // ── 3. Build risk-factor model (for floating-rate lookup) ─────────
-        // Base risk factors provide the "prior" rate for all floating contracts.
-        // The GPU/CPU engine uses Vasicek scenario rates for "after" rate resets.
-        var rf = new RiskFactorModel();
-        rf.AddConstantRate("USD_LIBOR_3M", vasicek.R0);   // flat prior = initial r0
+            var bundle = InputDirectoryLoader.Load(opts.InputDir);
 
-        // ── 4. Resolve run requests ───────────────────────────────────────
-        List<RunRequest> runs;
-        if (!string.IsNullOrEmpty(opts.RunsFile) && File.Exists(opts.RunsFile))
-        {
-            runs = new List<RunRequest>(RunRequest.LoadFromJson(opts.RunsFile));
-            Console.WriteLine($"[{Now()}]   Loaded {runs.Count} run(s) from {opts.RunsFile}");
+            portfolio  = bundle.Portfolio;
+            rates      = bundle.Rates;
+            vasicek    = bundle.VasicekParams;
+            baseDate   = bundle.BaseDate;
+            numMonths  = rates.NumMonths;
+            runs       = bundle.Runs;
+
+            // Propagate metadata path from input bundle unless overridden via --metadata
+            if (string.IsNullOrEmpty(opts.Export.MetadataPath) &&
+                !string.IsNullOrEmpty(bundle.MetadataPath))
+                opts.Export.MetadataPath = bundle.MetadataPath;
+
+            Console.WriteLine($"[{Now()}]   Loaded {portfolio.Count:N0} contracts from portfolio.csv");
+            Console.WriteLine($"[{Now()}]   Loaded {rates.NumScenarios:N0} scenarios × {rates.NumMonths} months from riskfactors");
+            Console.WriteLine($"[{Now()}]   Loaded {runs.Count} run(s)");
+
+            rf = new RiskFactorModel();
+            rf.AddConstantRate("USD_LIBOR_3M", vasicek.R0);
         }
         else
         {
-            runs = new List<RunRequest>();
-            // Default run (full portfolio, all scenarios)
-            runs.Add(new RunRequest
+            // ── SYNTHETIC GENERATOR MODE (existing behaviour) ─────────────
+            Console.WriteLine($"  contracts    : {opts.Contracts:N0}");
+            Console.WriteLine($"  scenarios    : {opts.Scenarios:N0}");
+            Console.WriteLine($"  months       : {opts.Months}  (= {opts.Months / 12} years)");
+            Console.WriteLine($"  seed         : {opts.Seed}");
+            Console.WriteLine($"  backend      : {opts.Backend}");
+            Console.WriteLine($"  calcDateIndex: {opts.CalcDateIndex}");
+            Console.WriteLine($"  output dir   : {opts.OutDir}");
+            Console.WriteLine();
+
+            // ── 1. Portfolio generation ───────────────────────────────────
+            Console.WriteLine($"[{Now()}] ─── PORTFOLIO GENERATION ────────────────────────────────");
+            var portParams = new PortfolioParams
             {
-                Id            = "run0",
-                Description   = "Full portfolio run",
-                ContractStart = opts.ContractStart,
-                ContractCount = opts.ContractCount,
-                ScenarioStart = opts.ScenarioStart,
-                ScenarioCount = opts.ScenarioCount,
-                CalcDateIndex = opts.CalcDateIndex,
-            });
-            // Second run with different calcDateIndex (backtesting style)
-            if (opts.CalcDateIndex == 0 && opts.Months > 60)
+                NumContracts = opts.Contracts,
+                BaseDate     = new DateTime(2020, 1, 1),
+                Seed         = opts.Seed,
+            };
+            var portfolioSw = Stopwatch.StartNew();
+            portfolio = PortfolioGenerator.Generate(portParams);
+            Console.WriteLine($"[{Now()}]   Generated {portfolio.Count:N0} contracts in {portfolioSw.ElapsedMilliseconds} ms");
+
+            baseDate  = portParams.BaseDate;
+            numMonths = opts.Months;
+
+            // ── 2. MC rate scenario generation (Vasicek) ─────────────────
+            Console.WriteLine($"[{Now()}] ─── VASICEK SCENARIO GENERATION ─────────────────────────");
+            vasicek = new VasicekParams
             {
-                // Backtest run: smaller slice to keep demo fast
-                const int BacktestMaxContracts = 500;
-                const int BacktestMaxScenarios = 100;
-                const int BacktestCalcDateIdx  = 60;   // 5 years into the simulation
+                Kappa = 0.15,
+                Theta = 0.04,
+                Sigma = 0.02,
+                R0    = 0.03,
+            };
+            var ratesSw = Stopwatch.StartNew();
+            rates = VasicekRateGenerator.Generate(vasicek, opts.Scenarios, opts.Months, opts.Seed + 1UL);
+            Console.WriteLine($"[{Now()}]   Generated {opts.Scenarios:N0} scenarios × {opts.Months} months in {ratesSw.ElapsedMilliseconds} ms");
+            Console.WriteLine($"[{Now()}]   Mean short rate at t=0: {rates.MeanRateAtMonth(0):P2}");
+            Console.WriteLine($"[{Now()}]   Mean short rate at t=300 (25y): {rates.MeanRateAtMonth(Math.Min(300, opts.Months - 1)):P2}");
+            Console.WriteLine($"[{Now()}]   Mean DF at t=120 (10y): {rates.MeanDfAtMonth(Math.Min(120, opts.Months - 1)):F4}");
+
+            // ── 3. Build risk-factor model ────────────────────────────────
+            rf = new RiskFactorModel();
+            rf.AddConstantRate("USD_LIBOR_3M", vasicek.R0);
+
+            // ── 4. Resolve run requests ───────────────────────────────────
+            if (!string.IsNullOrEmpty(opts.RunsFile) && File.Exists(opts.RunsFile))
+            {
+                runs = new List<RunRequest>(RunRequest.LoadFromJson(opts.RunsFile));
+                Console.WriteLine($"[{Now()}]   Loaded {runs.Count} run(s) from {opts.RunsFile}");
+            }
+            else
+            {
+                runs = new List<RunRequest>();
                 runs.Add(new RunRequest
                 {
-                    Id            = "run1_backtest",
-                    Description   = $"Backtest: calcDateIndex = {BacktestCalcDateIdx} (5y into simulation)",
+                    Id            = "run0",
+                    Description   = "Full portfolio run",
                     ContractStart = opts.ContractStart,
-                    ContractCount = Math.Min(opts.ContractCount > 0 ? opts.ContractCount : opts.Contracts, BacktestMaxContracts),
+                    ContractCount = opts.ContractCount,
                     ScenarioStart = opts.ScenarioStart,
-                    ScenarioCount = Math.Min(opts.ScenarioCount > 0 ? opts.ScenarioCount : opts.Scenarios, BacktestMaxScenarios),
-                    CalcDateIndex = BacktestCalcDateIdx,
+                    ScenarioCount = opts.ScenarioCount,
+                    CalcDateIndex = opts.CalcDateIndex,
                 });
+                if (opts.CalcDateIndex == 0 && opts.Months > 60)
+                {
+                    const int BacktestMaxContracts = 500;
+                    const int BacktestMaxScenarios = 100;
+                    const int BacktestCalcDateIdx  = 60;
+                    runs.Add(new RunRequest
+                    {
+                        Id            = "run1_backtest",
+                        Description   = $"Backtest: calcDateIndex = {BacktestCalcDateIdx} (5y into simulation)",
+                        ContractStart = opts.ContractStart,
+                        ContractCount = Math.Min(opts.ContractCount > 0 ? opts.ContractCount : opts.Contracts, BacktestMaxContracts),
+                        ScenarioStart = opts.ScenarioStart,
+                        ScenarioCount = Math.Min(opts.ScenarioCount > 0 ? opts.ScenarioCount : opts.Scenarios, BacktestMaxScenarios),
+                        CalcDateIndex = BacktestCalcDateIdx,
+                    });
+                }
             }
         }
 
-        // ── 5. Execute all runs ───────────────────────────────────────────
+        // ── Portfolio export (opt-in) ─────────────────────────────────────
+        if (opts.ExportPortfolio)
+        {
+            Console.WriteLine($"[{Now()}] ─── EXPORTING PORTFOLIO ──────────────────────────────────");
+            Directory.CreateDirectory(opts.OutDir);
+            PortfolioExportSink.Write(opts.OutDir, portfolio);
+            Console.WriteLine($"[{Now()}]   Written {portfolio.Count:N0} contracts → {Path.GetFullPath(Path.Combine(opts.OutDir, "portfolio.csv"))}");
+        }
+
+        // ── Execute all runs ──────────────────────────────────────────────
         Console.WriteLine($"[{Now()}] ─── EXECUTING {runs.Count} RUN(S) ──────────────────────────────");
-        var baseDate        = portParams.BaseDate;
-        var maturityHorizon = baseDate.AddMonths(opts.Months + 1);
+        var maturityHorizon = baseDate.AddMonths(numMonths + 1);
 
         using var orchestrator = new DemoOrchestrator(
             portfolio, rates, rf,
@@ -135,7 +190,7 @@ internal static class Program
         foreach (var run in runs)
             orchestrator.ExecuteRun(run, opts.Backend);
 
-        // ── 6. Final summary ──────────────────────────────────────────────
+        // ── Final summary ─────────────────────────────────────────────────
         totalSw.Stop();
         Console.WriteLine();
         Console.WriteLine($"[{Now()}] ═══ ALL DONE — total wall time: {totalSw.ElapsedMilliseconds:N0} ms ═══");
@@ -159,6 +214,19 @@ internal static class Program
         public int     ScenarioCount { get; set; } = 0;
         public string  RunsFile      { get; set; } = string.Empty;
         public string  OutDir        { get; set; } = "./out";
+
+        /// <summary>
+        /// Input directory containing portfolio.csv, scenarios/, and optionally
+        /// runs.json and contract_metadata.csv.  When set, the synthetic portfolio
+        /// and scenario generator are bypassed.
+        /// </summary>
+        public string  InputDir      { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Write the generated (or loaded) portfolio to portfolio.csv in the
+        /// output directory so it can be re-used with --input in future runs.
+        /// </summary>
+        public bool    ExportPortfolio { get; set; } = false;
 
         // Reporting / export options
         public ExportConfig Export { get; set; } = new ExportConfig();
@@ -193,6 +261,10 @@ internal static class Program
                 case "--calcDateIndex": opts.CalcDateIndex = int.Parse(args[++i]); break;
                 case "--out":          opts.OutDir        = args[++i]; break;
                 case "--runs":         opts.RunsFile      = args[++i]; break;
+                case "--input":        opts.InputDir      = args[++i]; break;
+                case "--export-portfolio":
+                    opts.ExportPortfolio = ParseBool(args[++i]);
+                    break;
                 case "--contractRange":
                 {
                     var parts = args[++i].Split(':');
@@ -267,6 +339,22 @@ Options:
   --runs      file.json       JSON file with multiple RunRequest objects
   --out       dir             Output directory (default: ./out)
 
+Input-directory mode (bypasses synthetic generator):
+  --input     dir             Load portfolio + scenarios from an input directory.
+                              Expected layout:
+                                <dir>/portfolio.csv
+                                <dir>/scenarios/scenario_set.json
+                                <dir>/scenarios/riskfactors/interest_rate_after.csv
+                                <dir>/runs.json              (optional; outputOptions per run)
+                                <dir>/contract_metadata.csv  (optional)
+                              See CLI/PamMonteCarlo50Y/samples/input/ for an example.
+                              See docs/input-output-contract.md for full schema.
+
+Portfolio export (works in both modes):
+  --export-portfolio true     Write generated/loaded portfolio to portfolio.csv
+                              in the output directory.  Use this to capture a
+                              synthetic portfolio so you can re-run it with --input.
+
 Reporting / export options (Excel-friendly CSV outputs):
   --reporting true|false          Enable reporting transformer (default: false)
   --export-fact true|false        Also write fact_results_long.csv (default: false)
@@ -290,26 +378,25 @@ Reporting output files (when --reporting true):
   {runId}_fact_results_long.csv          — long-format fact table (when --export-fact true)
   _README.txt                            — explains files and Excel join workflow
 
-  See: samples/metadata/contracts_metadata_sample.csv for the expected metadata schema.
-  See: docs/reporting-transformer.md for full documentation.
+Portfolio export output (when --export-portfolio true):
+  portfolio.csv                          — all contracts in stable input-directory format
+                                           (re-usable with --input in future runs)
 
 Examples:
   # Quick CPU-only demo with 100 contracts, 100 scenarios
   dotnet run -- --backend cpu --contracts 100 --scenarios 100
 
-  # Full GPU demo with default settings
-  dotnet run -- --backend gpu
+  # Generate a portfolio and export it (capture for re-use)
+  dotnet run -- --backend cpu --contracts 500 --scenarios 100 --export-portfolio true --out ./generated
 
-  # Both CPU and GPU, with reporting transformer enabled
-  dotnet run -- --backend both --seed 99999 --out ./my_output --reporting true
+  # Re-run using the exported portfolio from an input directory
+  dotnet run -- --input ./generated --backend cpu --reporting true
 
-  # Export fact table + provide metadata for grouped summaries
-  dotnet run -- --backend cpu --contracts 500 --scenarios 200 \
-    --reporting true --export-fact true \
-    --metadata samples/metadata/contracts_metadata_sample.csv
+  # Run the execution-proof sample
+  dotnet run -- --input CLI/PamMonteCarlo50Y/samples/input --backend cpu --out CLI/PamMonteCarlo50Y/samples/out --reporting true --export-fact true
 
-  # Aggregation-only export (no fact table)
-  dotnet run -- --backend cpu --reporting true --aggregation-only true
+  See: CLI/PamMonteCarlo50Y/samples/  for ready-to-run sample scripts.
+  See: docs/input-output-contract.md for full schema documentation.
 ");
     }
 

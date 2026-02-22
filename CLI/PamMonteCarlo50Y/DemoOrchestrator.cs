@@ -83,6 +83,13 @@ public sealed class DemoOrchestrator : IDisposable
         var contracts = _portfolio.GetRange(contractStart, contractCount);
         int calcDateIndex = req.CalcDateIndex;
 
+        // ── Resolve effective export config for this run ──────────────────
+        // When a run carries its own outputOptions, they override the global
+        // CLI flags for that run only.
+        var effectiveConfig = req.OutputOptions != null
+            ? BuildExportConfig(req.OutputOptions, _exportConfig)
+            : _exportConfig;
+
         Console.WriteLine();
         Console.WriteLine($"═══ Run [{req.Id}] ═══════════════════════════════════════════════════");
         Console.WriteLine($"    Desc:      {(string.IsNullOrEmpty(req.Description) ? "(none)" : req.Description)}");
@@ -90,13 +97,36 @@ public sealed class DemoOrchestrator : IDisposable
         Console.WriteLine($"    Scenarios: [{scenarioStart}, {scenarioStart + scenarioCount}) = {scenarioCount:N0}");
         Console.WriteLine($"    CalcDate:  month {calcDateIndex} = {_baseDate.AddMonths(calcDateIndex):yyyy-MM-dd}");
         Console.WriteLine($"    Backend:   {backend}");
+        if (req.OutputOptions != null)
+        {
+            Console.WriteLine($"    Outputs:   reporting={req.OutputOptions.Reporting}" +
+                              $"  pvFact={req.OutputOptions.ExportPvFact}" +
+                              $"  cashflows={req.OutputOptions.ExportCashflowTimeSeries}");
+        }
 
         if (backend is Backend.Cpu or Backend.Both)
-            RunCpu(req.Id, contracts, scenarioStart, scenarioCount, calcDateIndex, req.Description);
+            RunCpu(req.Id, contracts, scenarioStart, scenarioCount, calcDateIndex,
+                   req.Description, effectiveConfig, req.OutputOptions);
 
         if (backend is Backend.Gpu or Backend.Both)
-            RunGpu(req.Id, contracts, scenarioStart, scenarioCount, calcDateIndex, req.Description);
+            RunGpu(req.Id, contracts, scenarioStart, scenarioCount, calcDateIndex, req.Description, effectiveConfig);
     }
+
+    /// <summary>
+    /// Build an <see cref="ExportConfig"/> from per-run <see cref="RunOutputOptions"/>,
+    /// inheriting the metadata path from the global config.
+    /// </summary>
+    private static ExportConfig BuildExportConfig(RunOutputOptions opts, ExportConfig global) =>
+        new ExportConfig
+        {
+            Enabled              = opts.Reporting,
+            ExportFact           = opts.ExportPvFact,
+            AggregationOnly      = false,
+            ContractSampleSize   = opts.ContractSampleSize,
+            ContractSampleSeed   = 0,
+            ScenarioSampleSize   = opts.ScenarioSampleSize,
+            MetadataPath         = global.MetadataPath,   // always inherit global metadata path
+        };
 
     // ── CPU run ───────────────────────────────────────────────────────────
 
@@ -104,7 +134,9 @@ public sealed class DemoOrchestrator : IDisposable
         string                          runId,
         List<PamContractTerms>          contracts,
         int scenarioStart, int numScenarios,
-        int calcDateIndex, string description)
+        int calcDateIndex, string description,
+        ExportConfig    effectiveConfig,
+        RunOutputOptions? runOutputOpts)
     {
         string backendId = $"{runId}_cpu";
         var sw = Stopwatch.StartNew();
@@ -137,9 +169,29 @@ public sealed class DemoOrchestrator : IDisposable
         string[] contractIds = contracts.Select(c => c.ContractID ?? string.Empty).ToArray();
         WriteOutputs(backendId, description, "cpu", contracts.Count, numScenarios,
                      calcDateIndex, pvFlat, scenarioPvs, contractIds,
-                     scenarioStart,
+                     scenarioStart, effectiveConfig,
                      provisioningMs: t1 - t0, calcMs: calcMs,
                      fetchMs: t3 - t2, totalElapsed: sw.ElapsedMilliseconds);
+
+        // ─── CASHFLOW TIME-SERIES (optional) ──────────────────────────────
+        if (runOutputOpts?.ExportCashflowTimeSeries == true)
+        {
+            Console.WriteLine($"  [{backendId}] [{Now()}] CASHFLOW EXPORT started");
+            int csSize = runOutputOpts.ContractSampleSize <= 0
+                ? contracts.Count
+                : Math.Min(runOutputOpts.ContractSampleSize, contracts.Count);
+            int ssSize = runOutputOpts.ScenarioSampleSize <= 0
+                ? numScenarios
+                : Math.Min(runOutputOpts.ScenarioSampleSize, numScenarios);
+            int[] contractIdx = Enumerable.Range(0, csSize).ToArray();
+            var cashflows = CpuPvEngine.EvaluateCashflows(
+                contracts, contractIdx, contractIds,
+                _riskFactors, _rates, _baseDate,
+                calcDateIndex, scenarioStart, ssSize, _maturityHorizon);
+            PamMonteCarlo50Y.Sinks.CashflowTimeSeriesSink.Write(_outputDir, backendId, cashflows);
+            Console.WriteLine($"  [{backendId}] [{Now()}] CASHFLOW EXPORT done  ({cashflows.Count} rows → {backendId}_cashflow_timeseries.csv)");
+        }
+
         var t4 = sw.ElapsedMilliseconds;
         Console.WriteLine($"  [{backendId}] [{Now()}] REPORTING done        ({t4 - t3} ms)");
         Console.WriteLine($"  [{backendId}] [{Now()}] TOTAL                 ({t4} ms)");
@@ -151,7 +203,8 @@ public sealed class DemoOrchestrator : IDisposable
         string                          runId,
         List<PamContractTerms>          contracts,
         int scenarioStart, int numScenarios,
-        int calcDateIndex, string description)
+        int calcDateIndex, string description,
+        ExportConfig effectiveConfig)
     {
         if (_gpuEngine == null)
         {
@@ -191,7 +244,7 @@ public sealed class DemoOrchestrator : IDisposable
         WriteOutputs(backendId, description, $"gpu:{_gpuEngine.AcceleratorName}",
                      contracts.Count, numScenarios, calcDateIndex,
                      pvFlat, scenarioPvs, contractIds,
-                     scenarioStart,
+                     scenarioStart, effectiveConfig,
                      provisioningMs: t1 - t0, calcMs: calcMs,
                      fetchMs: t3 - t2, totalElapsed: sw.ElapsedMilliseconds);
         var t4 = sw.ElapsedMilliseconds;
@@ -236,20 +289,21 @@ public sealed class DemoOrchestrator : IDisposable
     // ── Output writing ────────────────────────────────────────────────────
 
     private void WriteOutputs(
-        string   runId,
-        string   description,
-        string   backend,
-        int      numContracts,
-        int      numScenarios,
-        int      calcDateIndex,
-        double[] pvFlat,
-        double[] scenarioPvs,
-        string[] contractIds,
-        int      scenarioStart,
-        long     provisioningMs,
-        long     calcMs,
-        long     fetchMs,
-        long     totalElapsed)
+        string       runId,
+        string       description,
+        string       backend,
+        int          numContracts,
+        int          numScenarios,
+        int          calcDateIndex,
+        double[]     pvFlat,
+        double[]     scenarioPvs,
+        string[]     contractIds,
+        int          scenarioStart,
+        ExportConfig exportConfig,
+        long         provisioningMs,
+        long         calcMs,
+        long         fetchMs,
+        long         totalElapsed)
     {
         Directory.CreateDirectory(_outputDir);
 
@@ -261,7 +315,7 @@ public sealed class DemoOrchestrator : IDisposable
         ResultExportTransformer.Write(
             _outputDir, runId, contractIds, pvFlat,
             numContracts, numScenarios, scenarioStart,
-            calcDateIndex, backend, _exportConfig);
+            calcDateIndex, backend, exportConfig);
 
         // Summary JSON
         var summary = new RunSummaryRecord
