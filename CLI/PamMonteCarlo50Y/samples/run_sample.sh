@@ -4,23 +4,19 @@
 # Prerequisites:
 #   .NET 9 SDK  (https://dotnet.microsoft.com/download)
 #
-# Usage:
-#   chmod +x run_sample.sh
-#   ./run_sample.sh [--backend cpu|gpu|both] [--out <output-dir>]
-#
-# Defaults: --backend cpu, --out ./out/execution-proof
+# Usage (from repo root):
+#   chmod +x CLI/PamMonteCarlo50Y/samples/run_sample.sh
+#   CLI/PamMonteCarlo50Y/samples/run_sample.sh [--backend cpu|gpu|both] [--out <dir>]
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 PROJECT="$REPO_ROOT/CLI/PamMonteCarlo50Y"
 INPUT_DIR="$SCRIPT_DIR/input"
-
 BACKEND="cpu"
 OUT_DIR="$SCRIPT_DIR/out"
 
-# Parse optional arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --backend) BACKEND="$2"; shift 2 ;;
@@ -30,7 +26,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  Execution-Proof Sample Runner                           ║"
+echo "║  PAM Monte Carlo — Execution-Proof Sample                ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
 echo "  input dir  : $INPUT_DIR"
@@ -53,7 +49,8 @@ echo ""
 echo "Proof checklist:"
 echo "  ✓ portfolio.csv loaded from input directory"
 echo "  ✓ 3 Vasicek scenarios × 24 months loaded from riskfactors CSVs"
-echo "  ✓ runs.json defines 2 runs with different contract/scenario slices"
+echo "  ✓ runs.json defines 2 runs with per-run outputOptions"
 echo "  ✓ Per-contract × per-scenario PVs in *_fact_results_long.csv"
+echo "  ✓ Per-contract × scenario × time cashflows in *_cashflow_timeseries.csv"
 echo "  ✓ Per-contract statistics in *_contract_summary.csv"
 echo "  ✓ Metadata join ready: contract_metadata.csv → ContractId"

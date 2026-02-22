@@ -52,6 +52,58 @@ public static class PortfolioExportSink
     }
 }
 
+// ── Cashflow time-series export ──────────────────────────────────────────
+
+/// <summary>
+/// Writes <c>{runId}_cashflow_timeseries.csv</c> — one row per
+/// (RunId, ContractId, ScenarioId, EventDate, TimeIndex, EventType)
+/// with UndiscountedCashflow, DiscountFactor, and DiscountedCashflow.
+///
+/// This provides the full contract × scenario × time cashflow waterfall
+/// that can be loaded into Excel for time-series analysis and joins.
+///
+/// Primary key: RunId + ContractId + ScenarioId + EventDate + EventType
+/// JOIN keys:
+///   ContractId → contract_metadata.csv (adds Segment, Region, etc.)
+///   RunId      → runs.csv (adds CalcDateIndex, Backend, etc.)
+///   ScenarioId → scenario_set.json (adds seed, model params, etc.)
+/// </summary>
+public static class CashflowTimeSeriesSink
+{
+    public static void Write(
+        string outputDir,
+        string runId,
+        IReadOnlyList<CashflowEventDetail> events)
+    {
+        Directory.CreateDirectory(outputDir);
+        string path = Path.Combine(outputDir, $"{runId}_cashflow_timeseries.csv");
+        using var w = new StreamWriter(path, false, Encoding.UTF8);
+        w.WriteLine(
+            "RunId,ContractId,ScenarioId,EventDate,TimeIndex," +
+            "EventType,UndiscountedCashflow,DiscountFactor,DiscountedCashflow");
+
+        foreach (var ev in events)
+        {
+            w.WriteLine(string.Join(",",
+                EscapeCsv(runId),
+                EscapeCsv(ev.ContractId),
+                ev.ScenarioId.ToString(CultureInfo.InvariantCulture),
+                ev.EventDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ev.TimeIndex.ToString(CultureInfo.InvariantCulture),
+                EscapeCsv(ev.EventType),
+                ev.UndiscountedCashflow.ToString("F6", CultureInfo.InvariantCulture),
+                ev.DiscountFactor.ToString("F8",       CultureInfo.InvariantCulture),
+                ev.DiscountedCashflow.ToString("F6",   CultureInfo.InvariantCulture)));
+        }
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) < 0) return value;
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
+    }
+}
+
 // ── Portfolio-PV by scenario ─────────────────────────────────────────────
 
 /// <summary>Writes <c>portfolio_pv_by_scenario.csv</c>.</summary>

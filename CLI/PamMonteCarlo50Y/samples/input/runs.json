@@ -1,0 +1,34 @@
+[
+  {
+    "id": "proof_fwd",
+    "description": "Full portfolio — pure forward valuation (calcDateIndex=0). All 5 contracts, all 3 scenarios.",
+    "contractStart": 0,
+    "contractCount": 0,
+    "scenarioStart": 0,
+    "scenarioCount": 0,
+    "calcDateIndex": 0,
+    "outputOptions": {
+      "reporting": true,
+      "exportPvFact": true,
+      "exportCashflowTimeSeries": true,
+      "contractSampleSize": 0,
+      "scenarioSampleSize": 0
+    }
+  },
+  {
+    "id": "proof_slice",
+    "description": "Contract subset [0, 3) — proves per-contract × per-scenario granularity. PV summary only.",
+    "contractStart": 0,
+    "contractCount": 3,
+    "scenarioStart": 0,
+    "scenarioCount": 0,
+    "calcDateIndex": 0,
+    "outputOptions": {
+      "reporting": true,
+      "exportPvFact": false,
+      "exportCashflowTimeSeries": false,
+      "contractSampleSize": 0,
+      "scenarioSampleSize": 0
+    }
+  }
+]

@@ -35,7 +35,7 @@ reading outputs from the PAM Monte Carlo CLI demo.
         └── interest_rate_after.csv        ← rates for t ≥ calcDateIndex
 ```
 
-See the working example in `samples/execution-proof/input/`.
+See the working example in `CLI/PamMonteCarlo50Y/samples/input/`.
 
 ---
 
@@ -206,27 +206,41 @@ Same format as `interest_rate_after.csv` but only for `t < calcDateIndex`.
 
 ## runs.json Schema
 
-Array of `RunRequest` objects.
+Array of `RunRequest` objects. Each run can carry an optional `outputOptions`
+block that controls exactly which output files are written for that run,
+overriding the global CLI reporting flags.
 
 ```json
 [
   {
     "id": "proof_fwd",
-    "description": "Full portfolio run — proves all contracts evaluated individually",
+    "description": "Full portfolio run — all outputs including cashflow time series",
     "contractStart": 0,
     "contractCount": 0,
     "scenarioStart": 0,
     "scenarioCount": 0,
-    "calcDateIndex": 0
+    "calcDateIndex": 0,
+    "outputOptions": {
+      "reporting": true,
+      "exportPvFact": true,
+      "exportCashflowTimeSeries": true,
+      "contractSampleSize": 0,
+      "scenarioSampleSize": 0
+    }
   },
   {
     "id": "proof_slice",
-    "description": "Contract subset [0,3) — proves per-contract granularity",
+    "description": "Contract subset [0,3) — PV summary only",
     "contractStart": 0,
     "contractCount": 3,
     "scenarioStart": 0,
     "scenarioCount": 0,
-    "calcDateIndex": 0
+    "calcDateIndex": 0,
+    "outputOptions": {
+      "reporting": true,
+      "exportPvFact": false,
+      "exportCashflowTimeSeries": false
+    }
   }
 ]
 ```
@@ -241,6 +255,16 @@ Array of `RunRequest` objects.
 | `scenarioCount` | `0` | Number of scenarios (0 = all from `scenarioStart`) |
 | `calcDateIndex` | `0` | Month index for prior/after boundary (0 = pure forward) |
 
+### `outputOptions` fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `reporting` | `true` | Write contract_summary, portfolio_by_scenario, grouped summaries |
+| `exportPvFact` | `false` | Write `fact_results_long.csv` (PV per contract × scenario) |
+| `exportCashflowTimeSeries` | `false` | Write `cashflow_timeseries.csv` (full event-level detail: contract × scenario × time) |
+| `contractSampleSize` | `0` | Max contracts in exports (0 = all) |
+| `scenarioSampleSize` | `0` | Max scenarios in exports (0 = all) |
+
 ---
 
 ## Output Directory Structure
@@ -252,10 +276,11 @@ Array of `RunRequest` objects.
 ├── {runId}_cpu_portfolio_pv_by_scenario.csv ← per-scenario portfolio PV (legacy)
 ├── {runId}_cpu_contract_pv_sample.csv       ← small contract×scenario sample (legacy)
 │
-│   (when --reporting true:)
+│   (when reporting=true in outputOptions or --reporting true:)
 ├── {runId}_cpu_portfolio_by_scenario.csv    ← RunId, ScenarioId, PortfolioPV
 ├── {runId}_cpu_contract_summary.csv         ← per-contract statistics across scenarios
-├── {runId}_cpu_fact_results_long.csv        ← long-format fact table (when --export-fact true)
+├── {runId}_cpu_fact_results_long.csv        ← PV per contract×scenario (when exportPvFact=true)
+├── {runId}_cpu_cashflow_timeseries.csv      ← contract×scenario×time cashflow detail (when exportCashflowTimeSeries=true)
 ├── {runId}_cpu_grouped_by_segment.csv       ← grouped summary (when --metadata supplied)
 ├── {runId}_cpu_grouped_by_region.csv        ← grouped summary (when --metadata supplied)
 └── _README.txt                              ← auto-generated join guide
@@ -313,6 +338,36 @@ proof_fwd_cpu,PAM_000001,0,PV,243210.456789
 ```
 
 **JOIN** on `ContractId` → `contract_metadata.csv` for full drill-down.
+
+### `{runId}_cashflow_timeseries.csv`
+
+Full cashflow waterfall: one row per (contract, scenario, cashflow event).
+**Primary key: `(RunId, ContractId, ScenarioId, EventDate, EventType)`.**
+
+```csv
+RunId,ContractId,ScenarioId,EventDate,TimeIndex,EventType,UndiscountedCashflow,DiscountFactor,DiscountedCashflow
+proof_fwd_cpu,PAM_000000,0,2020-01-01,0,IED,-500000.000000,1.00000000,-500000.000000
+proof_fwd_cpu,PAM_000000,0,2021-01-01,12,IP,25000.000000,0.97020304,24255.076000
+proof_fwd_cpu,PAM_000000,0,2022-01-01,24,MD,500000.000000,0.94103122,470515.610000
+...
+```
+
+| Column | Description |
+|--------|-------------|
+| `RunId` | Run identifier (joins to `runs.csv`) |
+| `ContractId` | Contract identifier (joins to `contract_metadata.csv`) |
+| `ScenarioId` | Scenario index (0-based absolute) |
+| `EventDate` | Calendar date of the event (yyyy-MM-dd) |
+| `TimeIndex` | Month index on the Vasicek grid (0 = base date) |
+| `EventType` | ACTUS event: IED (initial exchange), IP (interest payment), MD (maturity), RR (rate reset), etc. |
+| `UndiscountedCashflow` | Raw cashflow amount before discounting |
+| `DiscountFactor` | Vasicek DF at (ScenarioId, TimeIndex) |
+| `DiscountedCashflow` | UndiscountedCashflow × DiscountFactor (contribution to PV) |
+
+Use this table to:
+- Plot the cashflow profile of any contract over time per scenario
+- Compare discount factors across scenarios at each time step
+- Verify that `sum(DiscountedCashflow)` per (ContractId, ScenarioId) equals the PV in `fact_results_long.csv`
 **JOIN** on `RunId` → `runs.csv` for run metadata.
 
 ---
@@ -323,12 +378,12 @@ proof_fwd_cpu,PAM_000001,0,PV,243210.456789
 
 ```bash
 # Linux / macOS
-cd samples/execution-proof
+cd CLI/PamMonteCarlo50Y/samples
 chmod +x run_sample.sh
 ./run_sample.sh
 
 # Windows PowerShell
-cd samples\execution-proof
+cd CLI\PamMonteCarlo50Y\samples
 .\run_sample.ps1
 ```
 
@@ -351,7 +406,7 @@ opened directly in Excel or edited before re-use.
 ### Using the CLI directly with `--input`
 
 ```
-dotnet run --project CLI/PamMonteCarlo50Y -- --input samples/execution-proof/input --backend cpu --out ./my_output --reporting true --export-fact true
+dotnet run --project CLI/PamMonteCarlo50Y -- --input CLI/PamMonteCarlo50Y/samples/input --backend cpu --out ./my_output --reporting true --export-fact true
 ```
 
 ### CLI options for input-directory mode

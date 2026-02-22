@@ -3,7 +3,7 @@
 Self-contained demo that values a portfolio of PAM contracts under Monte Carlo
 interest-rate scenarios using both CPU and GPU paths.
 
-The **execution-proof sample** (`samples/execution-proof/`) ships ready-made
+The **execution-proof sample** (`CLI/PamMonteCarlo50Y/samples/`) ships ready-made
 input files (portfolio, scenarios, metadata) and produces Excel-ready CSV
 outputs in a single command — see [Quick start: execution-proof sample](#quick-start-execution-proof-sample) below.
 
@@ -29,22 +29,24 @@ outputs in a single command — see [Quick start: execution-proof sample](#quick
 
 ## Quick start: execution-proof sample
 
-This is the **recommended first run**. It uses the ready-made sample inputs and
-produces all Excel-friendly CSV files in one command.
+This is the **recommended first run**. It uses the ready-made sample inputs
+under `CLI/PamMonteCarlo50Y/samples/` and produces all Excel-friendly CSV files
+in one command.
 
 ```
-dotnet run --project CLI/PamMonteCarlo50Y -- --input samples/execution-proof/input --backend cpu --out samples/execution-proof/out --reporting true --export-fact true
+dotnet run --project CLI/PamMonteCarlo50Y -- --input CLI/PamMonteCarlo50Y/samples/input --backend cpu --out CLI/PamMonteCarlo50Y/samples/out
 ```
 
 ### What gets produced
 
-After the run, `samples/execution-proof/out/` contains:
+After the run, `CLI/PamMonteCarlo50Y/samples/out/` contains:
 
 | File | Use in Excel |
 |------|-------------|
 | `proof_fwd_cpu_contract_summary.csv` | Per-contract PV statistics (MeanPV, StdPV, P05–ES99) — **JOIN with metadata on ContractId** |
 | `proof_fwd_cpu_portfolio_by_scenario.csv` | Portfolio PV per scenario — pivot by ScenarioId |
-| `proof_fwd_cpu_fact_results_long.csv` | Long-format PV per contract × scenario — drill-down analysis |
+| `proof_fwd_cpu_fact_results_long.csv` | PV per contract × scenario — drill-down analysis |
+| `proof_fwd_cpu_cashflow_timeseries.csv` | **Full cashflow waterfall**: RunId, ContractId, ScenarioId, EventDate, TimeIndex, EventType, UndiscountedCashflow, DiscountFactor, DiscountedCashflow |
 | `proof_fwd_cpu_grouped_by_segment.csv` | Mean PV aggregated by business segment |
 | `proof_fwd_cpu_grouped_by_region.csv` | Mean PV aggregated by region |
 | `proof_fwd_cpu_grouped_by_productline.csv` | Mean PV aggregated by product line |
@@ -52,18 +54,24 @@ After the run, `samples/execution-proof/out/` contains:
 | `runs.csv` | Run dimension table — join to all other files on RunId |
 | `_README.txt` | Auto-generated Excel join guide |
 
-> **Metadata is auto-loaded** from `samples/execution-proof/input/contract_metadata.csv`
+> **Metadata is auto-loaded** from `CLI/PamMonteCarlo50Y/samples/input/contract_metadata.csv`
 > because `--input` picks it up automatically.
 > The metadata adds `Segment`, `Region`, `ProductLine`, `Broker`, `Underwriter` to the analysis.
 
 ### Analysing the results in Excel
 
 1. **Open Excel** → Data → Get Data → From Text/CSV
-2. Load `proof_fwd_cpu_contract_summary.csv` (or open any other CSV directly)
-3. Load `samples/execution-proof/input/contract_metadata.csv`
+2. Load `proof_fwd_cpu_contract_summary.csv`
+3. Load `CLI/PamMonteCarlo50Y/samples/input/contract_metadata.csv`
 4. **PowerQuery → Merge Queries** → Left table: `contract_summary`, Right table: `contract_metadata`, Join key: `ContractId`
 5. Expand columns: `Segment`, `Region`, `ProductLine`, `Broker`
 6. **Insert → PivotTable** and use the merged query as the data source
+
+For cashflow time-series analysis:
+
+7. Load `proof_fwd_cpu_cashflow_timeseries.csv`
+8. Pivot by `EventDate` (rows) + `ScenarioId` (columns) + `UndiscountedCashflow` (values) to see cashflows over time per scenario
+9. Filter by `ContractId` to inspect a single contract's full cashflow waterfall
 
 Example pivot analyses:
 
@@ -88,7 +96,6 @@ dotnet run --project CLI/PamMonteCarlo50Y -- --backend cpu --contracts 500 --sce
 ```
 dotnet run --project CLI/PamMonteCarlo50Y -- --input ./my-portfolio --backend cpu --out ./my-portfolio/out --reporting true --export-fact true
 ```
-
 ---
 
 ## How to run (all modes)
@@ -150,7 +157,7 @@ Example `runs.json`:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--input dir` | — | Load portfolio + scenarios from disk. Bypasses synthetic generation. Expected layout: `portfolio.csv`, `scenarios/scenario_set.json`, `scenarios/riskfactors/interest_rate_after.csv`, optional `runs.json` and `contract_metadata.csv`. See `samples/execution-proof/input/`. |
+| `--input dir` | — | Load portfolio + scenarios from disk. Bypasses synthetic generation. Expected layout: `portfolio.csv`, `scenarios/scenario_set.json`, `scenarios/riskfactors/interest_rate_after.csv`, optional `runs.json` and `contract_metadata.csv`. See `CLI/PamMonteCarlo50Y/samples/input/`. |
 
 ### Portfolio export
 
@@ -190,6 +197,7 @@ Example `runs.json`:
 | `{runId}_contract_summary.csv` | RunId, ContractId, MeanPV, StdPV, P05, P50, P95, VaR99, ES99 |
 | `runs.csv` | RunId, CalcDateIndex, ContractCount, ScenarioCount, Backend, Timestamp |
 | `{runId}_fact_results_long.csv` | RunId, ContractId, ScenarioId, Measure, Value (when `--export-fact true`) |
+| `{runId}_cashflow_timeseries.csv` | RunId, ContractId, ScenarioId, EventDate, TimeIndex, EventType, UndiscountedCashflow, DiscountFactor, DiscountedCashflow (when `outputOptions.exportCashflowTimeSeries: true`) |
 | `{runId}_grouped_by_{dim}.csv` | RunId, {dim}, MeanPV, ContractCount — one file per metadata column (when `--metadata` set) |
 | `_README.txt` | Auto-generated guide to files + Excel join workflow |
 
@@ -235,7 +243,7 @@ The `--input` mode reads a stable on-disk directory contract:
 <input-dir>/
 ├── portfolio.csv                          ← valuation engine fields only
 ├── contract_metadata.csv                  ← descriptive fields (NOT fed into valuation)
-├── runs.json                              ← run requests (optional)
+├── runs.json                              ← run requests with per-run outputOptions (optional)
 └── scenarios/
     ├── scenario_set.json                  ← Vasicek params + file references
     └── riskfactors/
@@ -243,7 +251,39 @@ The `--input` mode reads a stable on-disk directory contract:
         └── interest_rate_prior.csv        ← same format, for t < calcDateIndex (optional)
 ```
 
-See `samples/execution-proof/input/` for a complete working example and
+### `runs.json` — per-run output options
+
+Each run request can carry an `outputOptions` block to define exactly which
+output files are written for that run, independently of the global CLI flags:
+
+```json
+[
+  {
+    "id": "full_run",
+    "description": "Full portfolio with cashflow detail",
+    "contractStart": 0, "contractCount": 0,
+    "scenarioStart": 0, "scenarioCount": 0,
+    "calcDateIndex": 0,
+    "outputOptions": {
+      "reporting": true,
+      "exportPvFact": true,
+      "exportCashflowTimeSeries": true,
+      "contractSampleSize": 0,
+      "scenarioSampleSize": 0
+    }
+  }
+]
+```
+
+| `outputOptions` field | Default | Description |
+|-----------------------|---------|-------------|
+| `reporting` | `true` | Write contract_summary, portfolio_by_scenario, grouped summaries |
+| `exportPvFact` | `false` | Also write `fact_results_long.csv` (PV per contract × scenario) |
+| `exportCashflowTimeSeries` | `false` | Write `cashflow_timeseries.csv` — full event-level detail per contract × scenario × time |
+| `contractSampleSize` | `0` | Max contracts in exports (0 = all) |
+| `scenarioSampleSize` | `0` | Max scenarios in exports (0 = all) |
+
+See `CLI/PamMonteCarlo50Y/samples/input/` for a complete working example and
 `docs/input-output-contract.md` for the full schema.
 
 ---
@@ -320,29 +360,29 @@ CLI/PamMonteCarlo50Y/
 ├── InputDirectoryLoader.cs      Parses portfolio.csv, scenario_set.json, riskfactor CSVs
 ├── PortfolioGenerator.cs        Seeded PAM portfolio generation (synthetic mode)
 ├── VasicekRateGenerator.cs      Vasicek MC short rates + discount factors
-├── RunRequest.cs                Multi-run slicing model
-├── CpuPvEngine.cs               CPU discounted PV (Parallel.For over scenarios)
+├── RunRequest.cs                Multi-run model + RunOutputOptions (per-run output config)
+├── CpuPvEngine.cs               CPU PV engine + EvaluateCashflows() for event-level detail
 ├── McPvKernel.cs                ILGPU kernel + blittable structs
 ├── GpuPvEngine.cs               GPU executor (ILGPU, buffer pooling)
-├── DemoOrchestrator.cs          Run orchestration + timeline logging
+├── DemoOrchestrator.cs          Run orchestration + per-run output option wiring
 ├── Reporting/
-│   ├── ExportConfig.cs          Controls which CSV files are written
+│   ├── ExportConfig.cs          Controls which CSV files are written (global)
 │   └── ResultExportTransformer.cs  Excel-friendly CSV outputs + metadata grouping
-└── Sinks/
-    └── OutputSinks.cs           CSV + JSON writers (including PortfolioExportSink)
-
-samples/execution-proof/
-├── input/                       Ready-made sample inputs (5 contracts, 3 scenarios)
-│   ├── portfolio.csv
-│   ├── contract_metadata.csv
-│   ├── runs.json
-│   └── scenarios/
-│       ├── scenario_set.json
-│       └── riskfactors/
-│           ├── interest_rate_after.csv
-│           └── interest_rate_prior.csv
-├── run_sample.sh                Linux/macOS runner script
-└── run_sample.ps1               Windows PowerShell runner script
+├── Sinks/
+│   └── OutputSinks.cs           CSV + JSON writers (incl. CashflowTimeSeriesSink)
+└── samples/                     ← co-located sample inputs and runner scripts
+    ├── input/
+    │   ├── portfolio.csv
+    │   ├── contract_metadata.csv
+    │   ├── runs.json                ← includes per-run outputOptions
+    │   ├── README.md
+    │   └── scenarios/
+    │       ├── scenario_set.json
+    │       └── riskfactors/
+    │           ├── interest_rate_after.csv
+    │           └── interest_rate_prior.csv
+    ├── run_sample.sh
+    └── run_sample.ps1
 
 docs/
 └── input-output-contract.md     Full schema reference for input/output formats

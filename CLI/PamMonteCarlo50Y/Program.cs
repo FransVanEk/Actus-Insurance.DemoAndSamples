@@ -345,9 +345,9 @@ Input-directory mode (bypasses synthetic generator):
                                 <dir>/portfolio.csv
                                 <dir>/scenarios/scenario_set.json
                                 <dir>/scenarios/riskfactors/interest_rate_after.csv
-                                <dir>/runs.json              (optional)
+                                <dir>/runs.json              (optional; outputOptions per run)
                                 <dir>/contract_metadata.csv  (optional)
-                              See samples/execution-proof/input/ for an example.
+                              See CLI/PamMonteCarlo50Y/samples/input/ for an example.
                               See docs/input-output-contract.md for full schema.
 
 Portfolio export (works in both modes):
@@ -393,9 +393,9 @@ Examples:
   dotnet run -- --input ./generated --backend cpu --reporting true
 
   # Run the execution-proof sample
-  dotnet run -- --input samples/execution-proof/input --backend cpu --out ./out/proof --reporting true --export-fact true
+  dotnet run -- --input CLI/PamMonteCarlo50Y/samples/input --backend cpu --out CLI/PamMonteCarlo50Y/samples/out --reporting true --export-fact true
 
-  See: samples/execution-proof/  for ready-to-run sample scripts.
+  See: CLI/PamMonteCarlo50Y/samples/  for ready-to-run sample scripts.
   See: docs/input-output-contract.md for full schema documentation.
 ");
     }

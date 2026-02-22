@@ -9,7 +9,7 @@
  *                        + riskfactors/interest_rate_prior.csv  (optional)
  *   <inputDir>/runs.json               — optional run requests
  *
- * See samples/execution-proof/input/ for example files and README.
+ * See CLI/PamMonteCarlo50Y/samples/input/ for example files and README.
  * See docs/input-output-contract.md for full schema documentation.
  */
 using System.Globalization;
