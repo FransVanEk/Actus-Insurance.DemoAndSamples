@@ -1,0 +1,6 @@
+ContractId,Segment,Region,ProductLine,Currency,Broker,Underwriter
+PAM_000000,Corporate,Americas,TermLoan,USD,BrokerAlpha,UW_West
+PAM_000001,Retail,EMEA,PersonalLoan,USD,BrokerBeta,UW_East
+PAM_000002,Corporate,APAC,FloatingLoan,USD,BrokerGamma,UW_East
+PAM_000003,Retail,Americas,PersonalLoan,USD,BrokerAlpha,UW_West
+PAM_000004,Corporate,EMEA,FloatingLoan,USD,BrokerBeta,UW_West
