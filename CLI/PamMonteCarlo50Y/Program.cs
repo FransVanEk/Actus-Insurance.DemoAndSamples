@@ -387,16 +387,13 @@ Examples:
   dotnet run -- --backend cpu --contracts 100 --scenarios 100
 
   # Generate a portfolio and export it (capture for re-use)
-  dotnet run -- --backend cpu --contracts 500 --scenarios 100 \
-    --export-portfolio true --out ./generated
+  dotnet run -- --backend cpu --contracts 500 --scenarios 100 --export-portfolio true --out ./generated
 
   # Re-run using the exported portfolio from an input directory
   dotnet run -- --input ./generated --backend cpu --reporting true
 
   # Run the execution-proof sample
-  dotnet run -- --input samples/execution-proof/input \
-    --backend cpu --out ./out/proof \
-    --reporting true --export-fact true
+  dotnet run -- --input samples/execution-proof/input --backend cpu --out ./out/proof --reporting true --export-fact true
 
   See: samples/execution-proof/  for ready-to-run sample scripts.
   See: docs/input-output-contract.md for full schema documentation.

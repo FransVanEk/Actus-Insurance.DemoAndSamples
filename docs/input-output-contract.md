@@ -337,24 +337,12 @@ cd samples\execution-proof
 Use `--export-portfolio true` to capture a synthetically generated portfolio to
 `portfolio.csv` in the output directory.  You can then re-run it with `--input`.
 
-```bash
-# Step 1 — generate 500 contracts × 200 scenarios and export the portfolio
-dotnet run --project CLI/PamMonteCarlo50Y -- \
-  --backend cpu              \
-  --contracts 500            \
-  --scenarios 200            \
-  --months 120               \
-  --seed 42                  \
-  --export-portfolio true    \
-  --out ./generated
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --backend cpu --contracts 500 --scenarios 200 --months 120 --seed 42 --export-portfolio true --out ./generated
+```
 
-# Step 2 — re-run using the exported portfolio (add your own scenario files)
-dotnet run --project CLI/PamMonteCarlo50Y -- \
-  --input   ./generated      \
-  --backend cpu              \
-  --out     ./rerun_output   \
-  --reporting  true          \
-  --export-fact true
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --input ./generated --backend cpu --out ./rerun_output --reporting true --export-fact true
 ```
 
 The exported `portfolio.csv` uses the stable input-directory format and can be
@@ -362,14 +350,8 @@ opened directly in Excel or edited before re-use.
 
 ### Using the CLI directly with `--input`
 
-```bash
-dotnet run --project CLI/PamMonteCarlo50Y -- \
-  --input   samples/execution-proof/input  \
-  --backend cpu                            \
-  --out     ./my_output                    \
-  --reporting  true                        \
-  --export-fact true                       \
-  --metadata samples/execution-proof/input/contract_metadata.csv
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --input samples/execution-proof/input --backend cpu --out ./my_output --reporting true --export-fact true
 ```
 
 ### CLI options for input-directory mode

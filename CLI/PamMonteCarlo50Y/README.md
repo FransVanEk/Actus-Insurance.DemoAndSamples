@@ -32,18 +32,7 @@ outputs in a single command — see [Quick start: execution-proof sample](#quick
 This is the **recommended first run**. It uses the ready-made sample inputs and
 produces all Excel-friendly CSV files in one command.
 
-```bash
-cd <repo-root>
-
-# Linux / macOS
-dotnet run --project CLI/PamMonteCarlo50Y -- \
-  --input   samples/execution-proof/input   \
-  --backend cpu                             \
-  --out     samples/execution-proof/out     \
-  --reporting    true                       \
-  --export-fact  true
-
-# Windows (single line)
+```
 dotnet run --project CLI/PamMonteCarlo50Y -- --input samples/execution-proof/input --backend cpu --out samples/execution-proof/out --reporting true --export-fact true
 ```
 
@@ -92,24 +81,12 @@ Example pivot analyses:
 Use `--export-portfolio true` to capture any generated portfolio to `portfolio.csv`
 in the output directory, then re-run it with `--input`:
 
-```bash
-# Step 1 — generate 500 contracts × 200 scenarios and export the portfolio
-dotnet run --project CLI/PamMonteCarlo50Y -- \
-  --backend cpu               \
-  --contracts 500             \
-  --scenarios 200             \
-  --months    120             \
-  --seed      42              \
-  --export-portfolio true     \
-  --out       ./my-portfolio
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --backend cpu --contracts 500 --scenarios 200 --months 120 --seed 42 --export-portfolio true --out ./my-portfolio
+```
 
-# Step 2 — re-run using that saved portfolio with full reporting
-dotnet run --project CLI/PamMonteCarlo50Y -- \
-  --input      ./my-portfolio  \
-  --backend    cpu             \
-  --out        ./my-portfolio/out \
-  --reporting  true            \
-  --export-fact true
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --input ./my-portfolio --backend cpu --out ./my-portfolio/out --reporting true --export-fact true
 ```
 
 ---
@@ -117,9 +94,8 @@ dotnet run --project CLI/PamMonteCarlo50Y -- \
 ## How to run (all modes)
 
 ### Quick CPU-only demo (synthetic, 100 contracts × 100 scenarios)
-```bash
-dotnet run --project CLI/PamMonteCarlo50Y -- \
-  --backend cpu --contracts 100 --scenarios 100 --months 120
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --backend cpu --contracts 100 --scenarios 100 --months 120
 ```
 
 ### Full demo (both CPU and GPU, default 10k × 1k)
@@ -133,9 +109,8 @@ dotnet run --project CLI/PamMonteCarlo50Y -- --backend gpu
 ```
 
 ### Custom seed and output directory
-```bash
-dotnet run --project CLI/PamMonteCarlo50Y -- \
-  --seed 99999 --scenarios 5000 --out ./results
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --seed 99999 --scenarios 5000 --out ./results
 ```
 
 ### Multiple runs from a JSON file
