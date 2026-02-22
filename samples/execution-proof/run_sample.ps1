@@ -21,7 +21,6 @@ $ScriptDir  = $PSScriptRoot
 $RepoRoot   = Split-Path (Split-Path $ScriptDir -Parent) -Parent
 $Project    = Join-Path $RepoRoot 'CLI' 'PamMonteCarlo50Y'
 $InputDir   = Join-Path $ScriptDir 'input'
-$MetaFile   = Join-Path $InputDir 'contract_metadata.csv'
 
 Write-Host "╔══════════════════════════════════════════════════════════╗"
 Write-Host "║  Execution-Proof Sample Runner                           ║"
@@ -33,12 +32,13 @@ Write-Host "  backend    : $Backend"
 Write-Host ""
 
 dotnet run --project $Project -- `
-    --input      $InputDir  `
-    --backend    $Backend   `
-    --out        $OutDir    `
-    --reporting  true       `
-    --export-fact true      `
-    --metadata   $MetaFile
+    --input                $InputDir  `
+    --backend              $Backend   `
+    --out                  $OutDir    `
+    --reporting            true       `
+    --export-fact          true       `
+    --contract-sample-size 0          `
+    --scenario-sample-size 0
 
 Write-Host ""
 Write-Host "Output files written to: $OutDir"

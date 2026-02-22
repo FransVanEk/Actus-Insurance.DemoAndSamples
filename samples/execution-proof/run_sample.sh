@@ -39,12 +39,13 @@ echo "  backend    : $BACKEND"
 echo ""
 
 dotnet run --project "$PROJECT" -- \
-  --input      "$INPUT_DIR"       \
-  --backend    "$BACKEND"         \
-  --out        "$OUT_DIR"         \
-  --reporting  true               \
-  --export-fact true              \
-  --metadata   "$INPUT_DIR/contract_metadata.csv"
+  --input               "$INPUT_DIR"  \
+  --backend             "$BACKEND"    \
+  --out                 "$OUT_DIR"    \
+  --reporting           true          \
+  --export-fact         true          \
+  --contract-sample-size 0            \
+  --scenario-sample-size 0
 
 echo ""
 echo "Output files written to: $OUT_DIR"
