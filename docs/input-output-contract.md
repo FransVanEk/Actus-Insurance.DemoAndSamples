@@ -86,7 +86,7 @@ Additional descriptive fields belong in `contract_metadata.csv`.
 ContractId,InitialExchangeDate,MaturityDate,NotionalPrincipal,NominalInterestRate,CycleOfInterestPayment,RateSpread,MarketObjectCodeOfRateReset,CycleOfRateReset
 PAM_000000,2020-01-01,2022-01-01,500000.00,0.0500,P1YL1,0.0000,,
 PAM_000001,2020-01-01,2022-01-01,250000.00,0.0430,P3ML1,0.0000,,
-PAM_000002,2020-01-01,2021-01-01,1000000.00,0.0000,P1YL1,0.0100,USD_LIBOR_3M,P3ML1
+PAM_000002,2020-01-01,2021-01-01,1000000.00,0.0500,P1YL1,0.0100,USD_LIBOR_3M,P3ML1
 ```
 
 ---
@@ -332,6 +332,34 @@ cd samples\execution-proof
 .\run_sample.ps1
 ```
 
+### Generate and export a synthetic portfolio
+
+Use `--export-portfolio true` to capture a synthetically generated portfolio to
+`portfolio.csv` in the output directory.  You can then re-run it with `--input`.
+
+```bash
+# Step 1 — generate 500 contracts × 200 scenarios and export the portfolio
+dotnet run --project CLI/PamMonteCarlo50Y -- \
+  --backend cpu              \
+  --contracts 500            \
+  --scenarios 200            \
+  --months 120               \
+  --seed 42                  \
+  --export-portfolio true    \
+  --out ./generated
+
+# Step 2 — re-run using the exported portfolio (add your own scenario files)
+dotnet run --project CLI/PamMonteCarlo50Y -- \
+  --input   ./generated      \
+  --backend cpu              \
+  --out     ./rerun_output   \
+  --reporting  true          \
+  --export-fact true
+```
+
+The exported `portfolio.csv` uses the stable input-directory format and can be
+opened directly in Excel or edited before re-use.
+
 ### Using the CLI directly with `--input`
 
 ```bash
@@ -351,6 +379,7 @@ dotnet run --project CLI/PamMonteCarlo50Y -- \
 | `--input <dir>` | Input directory containing `portfolio.csv`, `scenarios/`, and optionally `runs.json` |
 | `--backend cpu\|gpu\|both` | Execution backend (default: `both`) |
 | `--out <dir>` | Output directory (default: `./out`) |
+| `--export-portfolio true` | Write the generated/loaded portfolio to `portfolio.csv` in the output directory for re-use with `--input` |
 | `--reporting true` | Enable Excel-friendly CSV exports |
 | `--export-fact true` | Also write `fact_results_long.csv` (per-contract × per-scenario) |
 | `--metadata <path>` | Path to `contract_metadata.csv` for grouped summaries |

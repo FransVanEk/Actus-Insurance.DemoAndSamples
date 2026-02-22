@@ -68,6 +68,35 @@ public sealed class VasicekRateGenerator
     }
 
     /// <summary>
+    /// Create a <see cref="VasicekRateGenerator"/> directly from pre-computed arrays
+    /// (e.g. loaded from an input-directory CSV file).
+    /// </summary>
+    /// <param name="shortRates">
+    ///   Flat short-rate array, row-major: <c>shortRates[s * numMonths + t]</c>.
+    /// </param>
+    /// <param name="discountFactors">
+    ///   Flat DF array, same layout as <paramref name="shortRates"/>.
+    /// </param>
+    /// <param name="numScenarios">Number of scenarios.</param>
+    /// <param name="numMonths">Number of monthly steps.</param>
+    public static VasicekRateGenerator FromArrays(
+        double[] shortRates,
+        double[] discountFactors,
+        int      numScenarios,
+        int      numMonths)
+    {
+        if (shortRates.Length != numScenarios * numMonths)
+            throw new ArgumentException(
+                $"shortRates length {shortRates.Length} != {numScenarios}×{numMonths}",
+                nameof(shortRates));
+        if (discountFactors.Length != numScenarios * numMonths)
+            throw new ArgumentException(
+                $"discountFactors length {discountFactors.Length} != {numScenarios}×{numMonths}",
+                nameof(discountFactors));
+        return new VasicekRateGenerator(shortRates, discountFactors, numScenarios, numMonths);
+    }
+
+    /// <summary>
     /// Generate scenarios using the Vasicek model.
     /// </summary>
     /// <param name="p">Vasicek parameters.</param>

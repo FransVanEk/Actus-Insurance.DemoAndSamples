@@ -3,7 +3,54 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using ActusInsurance.Core.Models;
+
 namespace PamMonteCarlo50Y.Sinks;
+
+// ── Portfolio export ─────────────────────────────────────────────────────
+
+/// <summary>
+/// Writes <c>portfolio.csv</c> in the stable input-directory format so that
+/// the generated portfolio can be re-used with <c>--input</c> in future runs.
+///
+/// Output columns:
+///   ContractId, InitialExchangeDate, MaturityDate, NotionalPrincipal,
+///   NominalInterestRate, CycleOfInterestPayment, RateSpread,
+///   MarketObjectCodeOfRateReset, CycleOfRateReset
+/// </summary>
+public static class PortfolioExportSink
+{
+    public static void Write(string outputDir, IReadOnlyList<PamContractTerms> portfolio)
+    {
+        Directory.CreateDirectory(outputDir);
+        string path = Path.Combine(outputDir, "portfolio.csv");
+        using var w = new StreamWriter(path, false, Encoding.UTF8);
+        w.WriteLine(
+            "ContractId,InitialExchangeDate,MaturityDate,NotionalPrincipal," +
+            "NominalInterestRate,CycleOfInterestPayment,RateSpread," +
+            "MarketObjectCodeOfRateReset,CycleOfRateReset");
+
+        foreach (var c in portfolio)
+        {
+            w.WriteLine(string.Join(",",
+                EscapeCsv(c.ContractID ?? string.Empty),
+                c.InitialExchangeDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                c.MaturityDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                c.NotionalPrincipal.ToString("F2",   CultureInfo.InvariantCulture),
+                c.NominalInterestRate.ToString("F4", CultureInfo.InvariantCulture),
+                EscapeCsv(c.CycleOfInterestPayment ?? string.Empty),
+                c.RateSpread.ToString("F4",          CultureInfo.InvariantCulture),
+                EscapeCsv(c.MarketObjectCodeOfRateReset ?? string.Empty),
+                EscapeCsv(c.CycleOfRateReset ?? string.Empty)));
+        }
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) < 0) return value;
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
+    }
+}
 
 // ── Portfolio-PV by scenario ─────────────────────────────────────────────
 
