@@ -212,7 +212,7 @@ public static class InputDirectoryLoader
                 RateMultiplier                       = 1.0,
                 DayCountConvention                   = DayCountConvention.A_365,
                 BusinessDayConvention                = BusinessDayConventionEnum.NOS,
-                Calendar                             = Calendar.NC,
+                Calendar                             = ActusInsurance.Core.Types.Calendar.NC,
                 NotionalScalingMultiplier            = 1.0,
                 InterestScalingMultiplier            = 1.0,
             };
