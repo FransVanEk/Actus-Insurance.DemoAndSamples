@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ActusInsurance.FastEndpointsSqliteGpuSample</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FastEndpoints" Version="8.0.1" />
+    <PackageReference Include="FastEndpoints.Swagger" Version="8.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="samples-data/**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

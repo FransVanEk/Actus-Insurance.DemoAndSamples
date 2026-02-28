@@ -1,0 +1,12 @@
+{
+  "scenarioSetId": "sample-scenario-001",
+  "description": "Sample Vasicek rate scenario set (3 scenarios × 48 months)",
+  "baseDate": "2024-01-01",
+  "numScenarios": 3,
+  "numMonths": 48,
+  "scenarios": [
+    { "id": 0, "name": "Low",  "flatRate": 0.015 },
+    { "id": 1, "name": "Base", "flatRate": 0.030 },
+    { "id": 2, "name": "High", "flatRate": 0.065 }
+  ]
+}
