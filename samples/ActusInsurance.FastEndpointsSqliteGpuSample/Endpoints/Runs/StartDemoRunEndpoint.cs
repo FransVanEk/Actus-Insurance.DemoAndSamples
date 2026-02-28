@@ -8,17 +8,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ActusInsurance.FastEndpointsSqliteGpuSample.Endpoints.Runs;
 
-public class DemoNameRequest
-{
-    public string DemoName { get; set; } = string.Empty;
-}
-
 /// <summary>
 /// Starts a predefined demo run using packaged sample data.
 /// Demo names: "basic", "gpu-showcase"
 /// </summary>
 public class StartDemoRunEndpoint(AppDbContext db, RunQueue queue, IWebHostEnvironment env)
-    : Endpoint<DemoNameRequest, StartRunResponse>
+    : EndpointWithoutRequest<StartRunResponse>
 {
     private static readonly HashSet<string> ValidDemos = ["basic", "gpu-showcase"];
 
@@ -30,11 +25,13 @@ public class StartDemoRunEndpoint(AppDbContext db, RunQueue queue, IWebHostEnvir
             .WithSummary("Start a predefined demo run using packaged sample data. Demo names: basic, gpu-showcase"));
     }
 
-    public override async Task HandleAsync(DemoNameRequest req, CancellationToken ct)
+    public override async Task HandleAsync(CancellationToken ct)
     {
-        if (!ValidDemos.Contains(req.DemoName))
+        var demoName = Route<string>("demoName") ?? string.Empty;
+
+        if (!ValidDemos.Contains(demoName))
         {
-            await HttpContext.Response.SendAsync(new { error = $"Unknown demo '{req.DemoName}'. Valid demos: {string.Join(", ", ValidDemos)}" }, 404, cancellation: ct);
+            await HttpContext.Response.SendAsync(new { error = $"Unknown demo '{demoName}'. Valid demos: {string.Join(", ", ValidDemos)}" }, 404, cancellation: ct);
             return;
         }
 
@@ -43,8 +40,8 @@ public class StartDemoRunEndpoint(AppDbContext db, RunQueue queue, IWebHostEnvir
 
         var parameters = new Dictionary<string, string>
         {
-            ["demo"]    = req.DemoName,
-            ["demoHint"] = req.DemoName == "gpu-showcase"
+            ["demo"]    = demoName,
+            ["demoHint"] = demoName == "gpu-showcase"
                 ? "prefer-gpu"
                 : "cpu-only",
         };
@@ -55,6 +52,8 @@ public class StartDemoRunEndpoint(AppDbContext db, RunQueue queue, IWebHostEnvir
             RiskArtifactId      = riskId,
             PortfolioArtifactId = portfolioId,
             SinkDefinitionId    = sinkId,
+            // gpu-showcase forces GPU engine; basic demo uses the global default
+            EnginePreference    = demoName == "gpu-showcase" ? "GPU" : null,
             ParametersJson      = System.Text.Json.JsonSerializer.Serialize(parameters),
         };
 

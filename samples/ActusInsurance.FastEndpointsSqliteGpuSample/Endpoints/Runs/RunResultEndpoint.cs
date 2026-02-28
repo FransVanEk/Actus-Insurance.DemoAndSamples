@@ -10,7 +10,8 @@ public class RunResultResponse
     public Guid RunId { get; set; }
     public string State { get; set; } = string.Empty;
     public string? Engine { get; set; }
-    public object? Result { get; set; }
+    /// <summary>Full calculation result JSON when state is Completed.</summary>
+    public JsonElement? Result { get; set; }
     public DateTime? CompletedAt { get; set; }
 }
 
@@ -40,9 +41,9 @@ public class RunResultEndpoint(AppDbContext db) : Endpoint<RunIdRequest, RunResu
             return;
         }
 
-        object? result = null;
+        JsonElement? result = null;
         if (run.ResultJson is not null)
-            result = JsonSerializer.Deserialize<object>(run.ResultJson);
+            result = JsonSerializer.Deserialize<JsonElement>(run.ResultJson);
 
         await HttpContext.Response.SendAsync(new RunResultResponse
         {

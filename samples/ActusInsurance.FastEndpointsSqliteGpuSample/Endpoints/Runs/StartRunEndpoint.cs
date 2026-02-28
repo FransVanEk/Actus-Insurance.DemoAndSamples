@@ -13,6 +13,11 @@ public class StartRunRequest
     public Guid? PortfolioArtifactId { get; set; }
     public Guid? SinkDefinitionId { get; set; }
     public Dictionary<string, string>? Parameters { get; set; }
+    /// <summary>
+    /// Optional per-run engine override.
+    /// true = GPU (simulated), false = CPU, null = use global config default.
+    /// </summary>
+    public bool? PreferGpu { get; set; }
 }
 
 public class StartRunResponse
@@ -41,6 +46,7 @@ public class StartRunEndpoint(AppDbContext db, RunQueue queue) : Endpoint<StartR
             RiskArtifactId      = req.RiskArtifactId,
             PortfolioArtifactId = req.PortfolioArtifactId,
             SinkDefinitionId    = req.SinkDefinitionId,
+            EnginePreference    = req.PreferGpu switch { true => "GPU", false => "CPU", _ => null },
             ParametersJson      = req.Parameters is not null
                 ? JsonSerializer.Serialize(req.Parameters)
                 : null,

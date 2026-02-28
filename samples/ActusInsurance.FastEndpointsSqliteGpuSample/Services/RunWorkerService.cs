@@ -3,6 +3,7 @@ using ActusInsurance.FastEndpointsSqliteGpuSample.Data;
 using ActusInsurance.FastEndpointsSqliteGpuSample.Data.Entities;
 using ActusInsurance.FastEndpointsSqliteGpuSample.Engines;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ActusInsurance.FastEndpointsSqliteGpuSample.Services;
 
@@ -10,18 +11,27 @@ namespace ActusInsurance.FastEndpointsSqliteGpuSample.Services;
 public sealed class RunWorkerService(
     RunQueue queue,
     IServiceScopeFactory scopeFactory,
-    ICalculationEngine calculationEngine,
+    [FromKeyedServices("cpu")] ICalculationEngine cpuEngine,
+    [FromKeyedServices("gpu")] ICalculationEngine gpuEngine,
+    ICalculationEngine defaultEngine,
     ILogger<RunWorkerService> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("RunWorkerService started, engine = {Engine}", calculationEngine.Label);
+        logger.LogInformation("RunWorkerService started, default engine = {Engine}", defaultEngine.Label);
 
         await foreach (var runId in queue.Reader.ReadAllAsync(stoppingToken))
         {
             await ProcessRunAsync(runId, stoppingToken);
         }
     }
+
+    private ICalculationEngine SelectEngine(string? preference) => preference switch
+    {
+        "GPU" => gpuEngine,
+        "CPU" => cpuEngine,
+        _     => defaultEngine,
+    };
 
     private async Task ProcessRunAsync(Guid runId, CancellationToken ct)
     {
@@ -38,7 +48,9 @@ public sealed class RunWorkerService(
         run.State     = RunState.Running;
         run.StartedAt = DateTime.UtcNow;
         run.UpdatedAt = DateTime.UtcNow;
-        run.EngineUsed = calculationEngine.Label;
+
+        var engine = SelectEngine(run.EnginePreference);
+        run.EngineUsed = engine.Label;
         await db.SaveChangesAsync(ct);
 
         try
@@ -62,7 +74,7 @@ public sealed class RunWorkerService(
                 _ = UpdateProgressAsync(runId, info, scopeFactory, logger);
             });
 
-            var result = await calculationEngine.ExecuteAsync(inputs, progress, ct);
+            var result = await engine.ExecuteAsync(inputs, progress, ct);
 
             // Save result
             using var resultScope = scopeFactory.CreateScope();

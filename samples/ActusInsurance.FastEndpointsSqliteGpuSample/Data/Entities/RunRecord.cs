@@ -6,6 +6,10 @@ public class RunRecord
     public string State { get; set; } = RunState.Queued;
     public int Progress { get; set; }
     public string EngineUsed { get; set; } = string.Empty;
+    /// <summary>
+    /// Optional per-run engine preference: "CPU" | "GPU" | null (use global config default).
+    /// </summary>
+    public string? EnginePreference { get; set; }
     public Guid? ScenarioArtifactId { get; set; }
     public Guid? RiskArtifactId { get; set; }
     public Guid? PortfolioArtifactId { get; set; }

@@ -2,7 +2,6 @@ using ActusInsurance.FastEndpointsSqliteGpuSample.Data;
 using ActusInsurance.FastEndpointsSqliteGpuSample.Engines;
 using ActusInsurance.FastEndpointsSqliteGpuSample.Services;
 using FastEndpoints;
-using FastEndpoints.Swagger;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,28 +13,22 @@ var dbPath = Path.Combine(dataDir, "app.db");
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseSqlite($"Data Source={dbPath}"));
 
-// ── Calculation engine ────────────────────────────────────────────────────────
+// ── Calculation engines ───────────────────────────────────────────────────────
+// Both engines are registered as keyed singletons for per-run selection.
+// The unkeyed ICalculationEngine binding follows the global "Calculation:PreferGpu" config.
+builder.Services.AddKeyedSingleton<ICalculationEngine, CpuCalculationEngine>("cpu");
+builder.Services.AddKeyedSingleton<ICalculationEngine, GpuCalculationEngine>("gpu");
+
 bool preferGpu = builder.Configuration.GetValue<bool>("Calculation:PreferGpu");
-if (preferGpu)
-    builder.Services.AddSingleton<ICalculationEngine, GpuCalculationEngine>();
-else
-    builder.Services.AddSingleton<ICalculationEngine, CpuCalculationEngine>();
+builder.Services.AddSingleton<ICalculationEngine>(sp =>
+    sp.GetRequiredKeyedService<ICalculationEngine>(preferGpu ? "gpu" : "cpu"));
 
 // ── Run queue + background worker ─────────────────────────────────────────────
 builder.Services.AddSingleton<RunQueue>();
 builder.Services.AddHostedService<RunWorkerService>();
 
-// ── FastEndpoints + Swagger ───────────────────────────────────────────────────
+// ── FastEndpoints ─────────────────────────────────────────────────────────────
 builder.Services.AddFastEndpoints();
-builder.Services.SwaggerDocument(o =>
-{
-    o.DocumentSettings = s =>
-    {
-        s.Title       = "Actus Insurance — FastEndpoints + SQLite + GPU Sample";
-        s.Version     = "v1";
-        s.Description = "Async insurance run API demonstrating scenario/risk/portfolio processing with CPU and GPU (simulated) engines.";
-    };
-});
 
 var app = builder.Build();
 
@@ -48,6 +41,20 @@ using (var scope = app.Services.CreateScope())
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.UseFastEndpoints();
-app.UseSwaggerGen();
+
+// Workaround for a FastEndpoints 8.x / .NET 9.13 incompatibility:
+// FastEndpoints' ConfigureSerializer() does:
+//   opts.TypeInfoResolver = opts.TypeInfoResolver?.WithAddedModifier(...)
+// In .NET 9.13 the JsonSerializerOptions.TypeInfoResolver getter returns the
+// internal OptionsBoundJsonTypeInfoResolverChain object even when the chain is
+// empty, so WithAddedModifier wraps the chain itself → chain = [Modifier(chain)]
+// → circular → stack overflow in EndpointDefinition.GetToHeaderProps on first request.
+// Fix: after UseFastEndpoints (after ConfigureSerializer has run), replace the
+// entire resolver chain with a single DefaultJsonTypeInfoResolver so that
+// TypeInfoResolver returns that object directly (not the chain), breaking the cycle.
+var feConfig = app.Services.GetRequiredService<Config>();
+feConfig.Serializer.Options.TypeInfoResolverChain.Clear();
+feConfig.Serializer.Options.TypeInfoResolverChain.Add(
+    new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver());
 
 app.Run();
