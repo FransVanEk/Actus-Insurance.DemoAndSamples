@@ -59,7 +59,7 @@ public sealed class RunWorkerService(
             var progress = new Progress<ProgressInfo>(info =>
             {
                 // Fire-and-forget progress updates (best effort)
-                _ = UpdateProgressAsync(runId, info, scopeFactory);
+                _ = UpdateProgressAsync(runId, info, scopeFactory, logger);
             });
 
             var result = await calculationEngine.ExecuteAsync(inputs, progress, ct);
@@ -108,7 +108,7 @@ public sealed class RunWorkerService(
         }
     }
 
-    private static async Task UpdateProgressAsync(Guid runId, ProgressInfo info, IServiceScopeFactory scopeFactory)
+    private static async Task UpdateProgressAsync(Guid runId, ProgressInfo info, IServiceScopeFactory scopeFactory, ILogger logger)
     {
         try
         {
@@ -122,7 +122,10 @@ public sealed class RunWorkerService(
                 await db.SaveChangesAsync();
             }
         }
-        catch { /* best effort */ }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to update progress for run {RunId} (best-effort update)", runId);
+        }
     }
 
     private static async Task<string> ReadArtifactAsync(AppDbContext db, Guid? id, CancellationToken ct)
