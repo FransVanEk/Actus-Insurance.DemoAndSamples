@@ -126,13 +126,84 @@ Values: `"CPU"` | `"GPU"` (case-insensitive is fine; the worker normalises to th
 
 ---
 
+## GPU passthrough in Docker (NVIDIA)
+
+The `docker-compose.yml` includes an `actus-sample-gpu` service that passes the host's physical NVIDIA GPU into the container. This uses the **NVIDIA Container Toolkit**.
+
+### Host prerequisites
+
+1. **NVIDIA GPU driver** installed on the host (any recent driver ≥ 525).
+2. **NVIDIA Container Toolkit** installed:
+   ```bash
+   # Ubuntu / Debian
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+     sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+   Full guide: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+
+### Start with GPU passthrough
+
+```bash
+cd samples/ActusInsurance.FastEndpointsSqliteGpuSample
+
+# Build the GPU image and start the GPU-enabled service
+docker compose --profile gpu up --build
+```
+
+Or manually:
+```bash
+docker build -t actus-sample-gpu -f Dockerfile.gpu .
+
+docker run -d \
+  --name actus-sample-gpu \
+  -p 8080:8080 \
+  -v actus-data:/app/data \
+  --gpus all \
+  -e Calculation__PreferGpu=true \
+  actus-sample-gpu
+```
+
+### What `Dockerfile.gpu` adds
+
+The GPU Dockerfile uses `nvidia/cuda:12.6.3-runtime-ubuntu24.04` as the runtime base instead of the standard `aspnet:9.0` image. This ships the CUDA 12 runtime libraries (`libcuda`, `libcudart`, cuBLAS, cuDNN) inside the container. Combined with the toolkit's host driver injection, any CUDA library (including ILGPU) can discover and use the physical GPU.
+
+```
+Host:      NVIDIA driver + NVIDIA Container Toolkit
+           ↓ injects /dev/nvidia* + libcuda.so at runtime
+Container: nvidia/cuda:12.6.3-runtime-ubuntu24.04
+              + aspnetcore-runtime-9.0
+              + your ILGPU / CUDA P/Invoke code
+```
+
+The two environment variables set in `Dockerfile.gpu` tell the NVIDIA runtime which GPU devices and driver capabilities to expose:
+
+```dockerfile
+ENV NVIDIA_VISIBLE_DEVICES=all        # expose all GPUs (change to "0" to pin to GPU 0)
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+```
+
+### Verify GPU is visible inside the container
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.6.3-runtime-ubuntu24.04 nvidia-smi
+```
+
+You should see your GPU listed in the `nvidia-smi` output before starting the application.
+
+> **Note:** The current `GpuCalculationEngine` is still a **simulated** engine — it does not actually invoke CUDA kernels. The Docker GPU passthrough infrastructure is in place so that when you replace the engine body with real ILGPU/CUDA code (see the section below), it will have access to the hardware without further Docker changes.
+
+---
+
 ## Replacing the simulated GPU engine with a real one
 
 The `GpuCalculationEngine` class is the only file you need to change.
 
 ### Option 1 — ILGPU (cross-platform CUDA/OpenCL)
-
-[ILGPU](https://ilgpu.net/) is a JIT compiler for .NET that generates real CUDA or OpenCL kernels.
 
 ```xml
 <!-- Add to .csproj -->

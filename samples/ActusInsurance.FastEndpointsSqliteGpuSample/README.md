@@ -58,39 +58,58 @@ dotnet run -- --Calculation:PreferGpu=true
 
 > No .NET SDK required — Docker handles the build entirely.
 
-### Build and run with Docker Compose (recommended)
+Two Dockerfiles are provided:
+
+| Dockerfile | Base image | Use when |
+|------------|-----------|----------|
+| `Dockerfile` | `mcr.microsoft.com/dotnet/aspnet:9.0` | CPU-only (simulated GPU engine) |
+| `Dockerfile.gpu` | `nvidia/cuda:12.6.3-runtime-ubuntu24.04` + .NET 9 | Host has an NVIDIA GPU |
+
+### CPU — Docker Compose (recommended)
 
 ```bash
 cd samples/ActusInsurance.FastEndpointsSqliteGpuSample
 docker compose up --build
 ```
 
-The API will be available at `http://localhost:8080` and Swagger at `http://localhost:8080/swagger`.
+### NVIDIA GPU — Docker Compose
 
-Data (SQLite DB + file blobs) is stored in the `actus-data` named volume, so it persists across container restarts.
+Requires the **NVIDIA Container Toolkit** on the host (see [`docs/gpu-engine.md`](docs/gpu-engine.md#gpu-passthrough-in-docker-nvidia) for setup steps).
+
+```bash
+cd samples/ActusInsurance.FastEndpointsSqliteGpuSample
+docker compose --profile gpu up --build
+```
+
+The GPU service:
+- Builds from `Dockerfile.gpu` (NVIDIA CUDA 12 runtime base + .NET 9)
+- Passes `--gpus all` to the container (via `deploy.resources.reservations.devices`)
+- Sets `Calculation__PreferGpu=true` so runs default to the GPU engine
+
+Both services store data in the same `actus-data` named volume. The API is available at `http://localhost:8080`, Swagger at `http://localhost:8080/swagger`.
 
 ### Or, build and run manually
 
 ```bash
 cd samples/ActusInsurance.FastEndpointsSqliteGpuSample
 
-# Build the image
+# ── CPU ──────────────────────────────────────────────────────────
 docker build -t actus-sample .
-
-# Run (persisting data in a named volume)
 docker run -d \
   --name actus-sample \
   -p 8080:8080 \
   -v actus-data:/app/data \
   actus-sample
 
-# Use the GPU (simulated) engine
+# ── GPU (requires NVIDIA Container Toolkit on host) ───────────────
+docker build -t actus-sample-gpu -f Dockerfile.gpu .
 docker run -d \
   --name actus-sample-gpu \
   -p 8080:8080 \
   -v actus-data:/app/data \
+  --gpus all \
   -e Calculation__PreferGpu=true \
-  actus-sample
+  actus-sample-gpu
 ```
 
 ### Stop and clean up

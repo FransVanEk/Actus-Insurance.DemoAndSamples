@@ -1,6 +1,22 @@
 version: "3.9"
 
+# ── Services ───────────────────────────────────────────────────────────────────
+#
+#  actus-sample      – CPU-only  (default)
+#  actus-sample-gpu  – NVIDIA GPU passthrough via NVIDIA Container Toolkit
+#
+# Usage:
+#   CPU:  docker compose up --build
+#   GPU:  docker compose --profile gpu up --build
+#
+# GPU host prerequisites:
+#   1. NVIDIA driver installed on the host
+#   2. NVIDIA Container Toolkit: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+#      (sudo apt install nvidia-container-toolkit && sudo systemctl restart docker)
+# ──────────────────────────────────────────────────────────────────────────────
+
 services:
+  # ── CPU service (default) ───────────────────────────────────────────────────
   actus-sample:
     build:
       context: .
@@ -13,9 +29,35 @@ services:
       # Named volume – persists SQLite DB and file blobs across restarts
       - actus-data:/app/data
     environment:
-      # Set to "true" to use the simulated GPU engine
       Calculation__PreferGpu: "false"
       # ASPNETCORE_ENVIRONMENT: "Development"  # uncomment for verbose logs
+
+  # ── GPU service ─────────────────────────────────────────────────────────────
+  # Builds from Dockerfile.gpu which uses the NVIDIA CUDA runtime base image.
+  # Requires NVIDIA Container Toolkit on the host (see above).
+  # Start with:  docker compose --profile gpu up --build
+  actus-sample-gpu:
+    profiles: [gpu]
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: actus-insurance-sample-gpu:latest
+    container_name: actus-sample-gpu
+    ports:
+      - "8080:8080"
+    volumes:
+      - actus-data:/app/data
+    environment:
+      # Route every run to the GPU engine by default
+      Calculation__PreferGpu: "true"
+      # ASPNETCORE_ENVIRONMENT: "Development"  # uncomment for verbose logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all          # use all available GPUs; change to 1 to pin to one card
+              capabilities: [gpu]
 
 volumes:
   actus-data:
