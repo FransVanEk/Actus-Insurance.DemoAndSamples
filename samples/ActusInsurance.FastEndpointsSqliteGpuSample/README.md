@@ -52,11 +52,17 @@ dotnet run -- --Calculation:PreferGpu=true
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/files/scenarios` | Upload a scenario file (multipart/form-data) |
+| `POST` | `/files/scenarios` | Upload a scenario file (multipart/form-data, field: `File`) |
 | `POST` | `/files/risks` | Upload a risk file |
 | `POST` | `/files/portfolios` | Upload a portfolio file |
 | `POST` | `/files/sinks` | Upload a sink definition file |
+| `POST` | `/files/scenarios/batch` | Upload **multiple** scenario files in one request (field: `Files`) |
+| `POST` | `/files/risks/batch` | Upload multiple risk files |
+| `POST` | `/files/portfolios/batch` | Upload multiple portfolio files |
 | `GET`  | `/files` | List uploaded files; optional `?type=Scenario\|Risk\|Portfolio\|Sink` filter |
+| `GET`  | `/files/{id}` | Get metadata for a specific file artifact |
+| `GET`  | `/files/{id}/content` | Download the raw file bytes |
+| `DELETE` | `/files/{id}` | Delete a file artifact and remove its blob from disk |
 
 ### Sinks
 
@@ -75,6 +81,8 @@ Sink definitions describe how calculation outputs should be aggregated and forma
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/runs` | Start an async calculation run |
+| `GET`  | `/runs` | List all runs; optional `?state=Queued\|Running\|Completed\|Failed\|Canceled` and `?limit=N` |
+| `GET`  | `/runs/{runId}` | Get full run detail (status + result merged) |
 | `GET`  | `/runs/{runId}/status` | Poll run status and progress (0–100) |
 | `GET`  | `/runs/{runId}/result` | Get the final calculation result |
 | `POST` | `/runs/{runId}/cancel` | Request cancellation |
@@ -206,11 +214,33 @@ curl -s -X POST http://localhost:5000/runs/demo/gpu-showcase | jq .
 ### 6. Upload a custom scenario file
 
 ```bash
+# Single file
 curl -s -X POST http://localhost:5000/files/scenarios \
   -F "File=@/path/to/my-scenario.json" | jq .
+
+# Batch — multiple files in one request
+curl -s -X POST http://localhost:5000/files/scenarios/batch \
+  -F "Files=@scenario-1.json" \
+  -F "Files=@scenario-2.json" \
+  -F "Files=@scenario-3.json" | jq .
+# Returns { uploaded: [...], errors: [...] }
 ```
 
-### 7. Create a sink definition
+### 7. Download a file back
+
+```bash
+FILE_ID="<id from upload response>"
+curl -s http://localhost:5000/files/$FILE_ID/content -o downloaded.json
+```
+
+### 8. Delete a file artifact
+
+```bash
+curl -s -X DELETE http://localhost:5000/files/$FILE_ID
+# 204 No Content on success
+```
+
+### 9. Create a sink definition
 
 ```bash
 curl -s -X POST http://localhost:5000/sinks \
@@ -222,7 +252,7 @@ curl -s -X POST http://localhost:5000/sinks \
   }' | jq .
 ```
 
-### 8. Cancel a run
+### 10. Cancel a run
 
 ```bash
 curl -s -X POST http://localhost:5000/runs/$RUN_ID/cancel
