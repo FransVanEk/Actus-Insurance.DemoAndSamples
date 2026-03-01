@@ -19,6 +19,7 @@ The project is intentionally self-contained: no authentication, no external serv
 | [`docs/architecture.md`](docs/architecture.md) | Data model, async pipeline, engine selection, project structure |
 | [`docs/endpoints.md`](docs/endpoints.md) | Full endpoint reference with request/response shapes |
 | [`docs/gpu-engine.md`](docs/gpu-engine.md) | GPU/CPU engine guide + how to wire a real GPU backend |
+| [`docs/client-prompt.md`](docs/client-prompt.md) | Ready-to-use system prompt for AI assistants (Copilot, ChatGPT, Claude…) |
 
 ---
 
