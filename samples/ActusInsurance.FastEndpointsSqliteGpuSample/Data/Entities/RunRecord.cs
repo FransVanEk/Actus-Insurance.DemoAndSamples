@@ -16,6 +16,8 @@ public class RunRecord
     public Guid? SinkDefinitionId { get; set; }
     public string? ParametersJson { get; set; }
     public string? ResultJson { get; set; }
+    /// <summary>JSON-serialized runtime metrics (elapsed_ms, stage, etc.).</summary>
+    public string? MetricsJson { get; set; }
     public string? ErrorMessage { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }

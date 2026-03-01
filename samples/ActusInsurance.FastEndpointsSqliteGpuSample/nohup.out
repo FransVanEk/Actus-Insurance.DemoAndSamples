@@ -1,0 +1,58 @@
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (7ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      PRAGMA journal_mode = 'wal';
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      CREATE TABLE "FileArtifacts" (
+          "Id" TEXT NOT NULL CONSTRAINT "PK_FileArtifacts" PRIMARY KEY,
+          "Type" TEXT NOT NULL,
+          "FileName" TEXT NOT NULL,
+          "ContentType" TEXT NOT NULL,
+          "Size" INTEGER NOT NULL,
+          "Sha256" TEXT NOT NULL,
+          "StoragePath" TEXT NOT NULL,
+          "CreatedAt" TEXT NOT NULL
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      CREATE TABLE "Runs" (
+          "Id" TEXT NOT NULL CONSTRAINT "PK_Runs" PRIMARY KEY,
+          "State" TEXT NOT NULL,
+          "Progress" INTEGER NOT NULL,
+          "EngineUsed" TEXT NOT NULL,
+          "EnginePreference" TEXT NULL,
+          "ScenarioArtifactId" TEXT NULL,
+          "RiskArtifactId" TEXT NULL,
+          "PortfolioArtifactId" TEXT NULL,
+          "SinkDefinitionId" TEXT NULL,
+          "ParametersJson" TEXT NULL,
+          "ResultJson" TEXT NULL,
+          "MetricsJson" TEXT NULL,
+          "ErrorMessage" TEXT NULL,
+          "CreatedAt" TEXT NOT NULL,
+          "StartedAt" TEXT NULL,
+          "CompletedAt" TEXT NULL,
+          "UpdatedAt" TEXT NOT NULL
+      );
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      CREATE TABLE "SinkDefinitions" (
+          "Id" TEXT NOT NULL CONSTRAINT "PK_SinkDefinitions" PRIMARY KEY,
+          "Name" TEXT NOT NULL,
+          "Version" TEXT NOT NULL,
+          "JsonDefinition" TEXT NOT NULL,
+          "CreatedAt" TEXT NOT NULL,
+          "UpdatedAt" TEXT NOT NULL
+      );
+info: FastEndpoints.StartupTimer[1]
+      Registered 24 endpoints in 620 milliseconds.
+info: ActusInsurance.FastEndpointsSqliteGpuSample.Services.RunWorkerService[0]
+      RunWorkerService started, default engine = CPU
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: /home/runner/work/Actus-Insurance.DemoAndSamples/Actus-Insurance.DemoAndSamples/samples/ActusInsurance.FastEndpointsSqliteGpuSample

@@ -1,6 +1,7 @@
 using ActusInsurance.FastEndpointsSqliteGpuSample.Data;
 using ActusInsurance.FastEndpointsSqliteGpuSample.Data.Entities;
 using FastEndpoints;
+using System.Text.Json;
 
 namespace ActusInsurance.FastEndpointsSqliteGpuSample.Endpoints.Runs;
 
@@ -19,6 +20,11 @@ public class RunStatusResponse
     public DateTime? StartedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public string? Engine { get; set; }
+    /// <summary>
+    /// Runtime metrics from the last completed progress update.
+    /// Keys include elapsed_ms (once started), stage (current stage name).
+    /// </summary>
+    public Dictionary<string, JsonElement>? Metrics { get; set; }
 }
 
 public class RunStatusEndpoint(AppDbContext db) : Endpoint<RunIdRequest, RunStatusResponse>
@@ -46,6 +52,9 @@ public class RunStatusEndpoint(AppDbContext db) : Endpoint<RunIdRequest, RunStat
             StartedAt    = run.StartedAt,
             UpdatedAt    = run.UpdatedAt,
             Engine       = string.IsNullOrEmpty(run.EngineUsed) ? null : run.EngineUsed,
+            Metrics      = run.MetricsJson is not null
+                ? JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(run.MetricsJson)
+                : null,
         }, cancellation: ct);
     }
 }

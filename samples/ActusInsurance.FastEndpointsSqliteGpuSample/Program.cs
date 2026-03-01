@@ -2,6 +2,7 @@ using ActusInsurance.FastEndpointsSqliteGpuSample.Data;
 using ActusInsurance.FastEndpointsSqliteGpuSample.Engines;
 using ActusInsurance.FastEndpointsSqliteGpuSample.Services;
 using FastEndpoints;
+using FastEndpoints.Swagger;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,6 +30,15 @@ builder.Services.AddHostedService<RunWorkerService>();
 
 // ── FastEndpoints ─────────────────────────────────────────────────────────────
 builder.Services.AddFastEndpoints();
+builder.Services.SwaggerDocument(o =>
+{
+    o.DocumentSettings = s =>
+    {
+        s.Title       = "Actus Insurance – FastEndpoints + SQLite + GPU Sample";
+        s.Version     = "v1";
+        s.Description = "Async insurance calculation API: upload scenario/risk/portfolio files, manage sink definitions, start calculation runs (CPU or GPU engine), and poll for results.";
+    };
+});
 
 var app = builder.Build();
 
@@ -41,6 +51,7 @@ using (var scope = app.Services.CreateScope())
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.UseFastEndpoints();
+app.UseSwaggerGen();
 
 // Workaround for a FastEndpoints 8.x / .NET 9.13 incompatibility:
 // FastEndpoints' ConfigureSerializer() does:

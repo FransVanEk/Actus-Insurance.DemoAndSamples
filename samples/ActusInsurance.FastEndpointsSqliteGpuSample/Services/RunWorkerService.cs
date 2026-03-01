@@ -87,6 +87,15 @@ public sealed class RunWorkerService(
                 finishedRun.CompletedAt = DateTime.UtcNow;
                 finishedRun.UpdatedAt   = DateTime.UtcNow;
                 finishedRun.ResultJson  = JsonSerializer.Serialize(result);
+                finishedRun.MetricsJson = JsonSerializer.Serialize(new Dictionary<string, object>
+                {
+                    ["stage"]        = "Done",
+                    ["percent"]      = 100,
+                    ["elapsed_ms"]   = result.DurationMs,
+                    ["engine"]       = result.EngineLabel,
+                    ["numScenarios"] = result.PortfolioPvByScenario.Length,
+                    ["meanPv"]       = result.MeanPv,
+                });
                 await resultDb.SaveChangesAsync(ct);
             }
 
@@ -129,8 +138,19 @@ public sealed class RunWorkerService(
             var run = await db.Runs.FindAsync([runId]);
             if (run is not null)
             {
-                run.Progress  = info.Percent;
-                run.UpdatedAt = DateTime.UtcNow;
+                run.Progress    = info.Percent;
+                run.UpdatedAt   = DateTime.UtcNow;
+                var elapsedMs = run.StartedAt.HasValue
+                    ? (long)(DateTime.UtcNow - run.StartedAt.Value).TotalMilliseconds
+                    : (long?)null;
+                var metrics = new Dictionary<string, object>
+                {
+                    ["stage"]   = info.Stage,
+                    ["percent"] = info.Percent,
+                };
+                if (elapsedMs.HasValue)
+                    metrics["elapsed_ms"] = elapsedMs.Value;
+                run.MetricsJson = JsonSerializer.Serialize(metrics);
                 await db.SaveChangesAsync();
             }
         }
