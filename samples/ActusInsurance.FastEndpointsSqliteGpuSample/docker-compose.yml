@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  actus-sample:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: actus-insurance-sample:latest
+    container_name: actus-sample
+    ports:
+      - "8080:8080"
+    volumes:
+      # Named volume – persists SQLite DB and file blobs across restarts
+      - actus-data:/app/data
+    environment:
+      # Set to "true" to use the simulated GPU engine
+      Calculation__PreferGpu: "false"
+      # ASPNETCORE_ENVIRONMENT: "Development"  # uncomment for verbose logs
+
+volumes:
+  actus-data:

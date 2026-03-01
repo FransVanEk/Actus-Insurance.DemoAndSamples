@@ -10,7 +10,15 @@ This sample demonstrates an **async insurance calculation web API** built with:
 - **File blob storage** — scenario, risk, and portfolio input files stored on disk
 - **Async run queue** — runs are submitted and processed asynchronously; clients poll for status and results
 
-The project is intentionally self-contained: no authentication, no external services, no Docker required.
+The project is intentionally self-contained: no authentication, no external services required.
+
+### 📚 Additional documentation
+
+| Document | Description |
+|----------|-------------|
+| [`docs/architecture.md`](docs/architecture.md) | Data model, async pipeline, engine selection, project structure |
+| [`docs/endpoints.md`](docs/endpoints.md) | Full endpoint reference with request/response shapes |
+| [`docs/gpu-engine.md`](docs/gpu-engine.md) | GPU/CPU engine guide + how to wire a real GPU backend |
 
 ---
 
@@ -42,6 +50,54 @@ To enable the GPU (simulated) engine instead of the CPU engine:
 ```bash
 dotnet run -- --Calculation:PreferGpu=true
 # or set in appsettings.json / environment variable
+```
+
+---
+
+## Running with Docker
+
+> No .NET SDK required — Docker handles the build entirely.
+
+### Build and run with Docker Compose (recommended)
+
+```bash
+cd samples/ActusInsurance.FastEndpointsSqliteGpuSample
+docker compose up --build
+```
+
+The API will be available at `http://localhost:8080` and Swagger at `http://localhost:8080/swagger`.
+
+Data (SQLite DB + file blobs) is stored in the `actus-data` named volume, so it persists across container restarts.
+
+### Or, build and run manually
+
+```bash
+cd samples/ActusInsurance.FastEndpointsSqliteGpuSample
+
+# Build the image
+docker build -t actus-sample .
+
+# Run (persisting data in a named volume)
+docker run -d \
+  --name actus-sample \
+  -p 8080:8080 \
+  -v actus-data:/app/data \
+  actus-sample
+
+# Use the GPU (simulated) engine
+docker run -d \
+  --name actus-sample-gpu \
+  -p 8080:8080 \
+  -v actus-data:/app/data \
+  -e Calculation__PreferGpu=true \
+  actus-sample
+```
+
+### Stop and clean up
+
+```bash
+docker compose down          # stop container
+docker compose down -v       # stop + remove the data volume
 ```
 
 ---
