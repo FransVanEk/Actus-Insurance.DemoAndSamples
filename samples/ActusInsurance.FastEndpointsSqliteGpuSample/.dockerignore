@@ -1,0 +1,7 @@
+# Exclude build artifacts and runtime data from Docker build context
+bin/
+obj/
+data/
+nohup.out
+*.user
+.vs/

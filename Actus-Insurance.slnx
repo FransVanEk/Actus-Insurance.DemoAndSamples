@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/ActusInsurance.FastEndpointsSqliteGpuSample/ActusInsurance.FastEndpointsSqliteGpuSample.csproj" />
+  </Folder>
+  <Project Path="CLI/PamMonteCarlo50Y/PamMonteCarlo50Y.csproj" Id="7827b4b0-aac7-40f1-aee2-2cfd450817e6" />
+  <Project Path="samples/ScenarioCpuGpuCalcDateDemo/ScenarioCpuGpuCalcDateDemo.csproj" Id="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
+</Solution>

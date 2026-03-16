@@ -1,0 +1,3 @@
+# Runtime data directory (SQLite DB + blob files created at startup)
+data/
+nohup.out

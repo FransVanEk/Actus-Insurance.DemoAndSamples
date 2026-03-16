@@ -1,0 +1,34 @@
+# Shared .dockerignore for CLI Dockerfile
+.git/
+.gitignore
+.github/
+.vscode/
+.vs/
+README.md
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Build outputs (will be included selectively)
+**/bin/
+**/obj/
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# IDE files
+**/*.user
+**/*.suo
+**/*.cache
+**/*.log
+
+# Node.js (not needed for CLI builds)
+samples/actus-designer/
+**/node_modules/
+
+# Keep only what we need for CLI projects
+!CLI/PamMonteCarlo50Y/
+!samples/ScenarioCpuGpuCalcDateDemo/
+!*.slnx
+!nuget.config

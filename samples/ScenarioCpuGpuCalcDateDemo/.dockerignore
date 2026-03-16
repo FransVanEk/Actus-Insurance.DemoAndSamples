@@ -1,0 +1,15 @@
+Dockerfile
+.dockerignore
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.cache
+*.log
+.git/
+.gitignore
+README.md
+**/.DS_Store
+nuget.config

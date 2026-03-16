@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────
+# Stage 1 – build  (standard .NET SDK image – no GPU needed to build)
+# ─────────────────────────────────────────────────────────────────
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+COPY ActusInsurance.FastEndpointsSqliteGpuSample.csproj ./
+RUN dotnet restore
+
+COPY . .
+RUN dotnet publish ActusInsurance.FastEndpointsSqliteGpuSample.csproj \
+    --no-restore \
+    -c Release \
+    -o /app/publish
+
+# ─────────────────────────────────────────────────────────────────
+# Stage 2 – runtime  (NVIDIA CUDA 12 + .NET 9 ASP.NET)
+#
+# This base image ships with:
+#   • CUDA 12 runtime libraries  (libcuda, libcudart, cuBLAS, …)
+#   • cuDNN runtime (via cuda-cudnn)
+#
+# The NVIDIA Container Toolkit on the HOST then:
+#   • Exposes /dev/nvidia* device nodes inside the container
+#   • Injects the host NVIDIA driver user-space library (libcuda.so)
+#
+# This combination lets ILGPU (or any CUDA P/Invoke library) discover
+# and use the physical GPU at runtime.
+#
+# Host prerequisites:
+#   1. NVIDIA GPU + driver
+#   2. NVIDIA Container Toolkit:
+#      https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+# ─────────────────────────────────────────────────────────────────
+FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04 AS runtime
+
+# Install .NET 9 ASP.NET runtime on top of the NVIDIA base
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        wget \
+        ca-certificates \
+ && wget -q https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb \
+ && dpkg -i packages-microsoft-prod.deb \
+ && rm packages-microsoft-prod.deb \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+        aspnetcore-runtime-9.0 \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+RUN mkdir -p /app/data/blobs
+
+COPY --from=build /app/publish .
+
+VOLUME /app/data
+
+EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
+
+# Default to the GPU engine; override with Calculation__PreferGpu=false for CPU
+ENV Calculation__PreferGpu=true
+ENV Logging__LogLevel__Microsoft.EntityFrameworkCore=Warning
+
+# NVIDIA runtime environment variables (used by CUDA / ILGPU at startup)
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+ENTRYPOINT ["dotnet", "ActusInsurance.FastEndpointsSqliteGpuSample.dll"]

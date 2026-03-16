@@ -1,0 +1,530 @@
+# Input / Output Directory Contract
+
+This document specifies the **stable on-disk format** for providing inputs to and
+reading outputs from the PAM Monte Carlo CLI demo.
+
+---
+
+## Table of Contents
+
+1. [Input Directory Structure](#input-directory-structure)
+2. [portfolio.csv Schema](#portfoliocsv-schema)
+3. [contract_metadata.csv Schema](#contract_metadatacsv-schema)
+4. [scenario_set.json Schema](#scenario_setjson-schema)
+5. [Risk Factor Arrays (CSV)](#risk-factor-arrays-csv)
+6. [runs.json Schema](#runsjson-schema)
+7. [Output Directory Structure](#output-directory-structure)
+8. [Output File Schemas](#output-file-schemas)
+9. [How to Run the CLI](#how-to-run-the-cli)
+10. [Opening Outputs in Excel](#opening-outputs-in-excel)
+11. [Validating Individual Contract Evaluation](#validating-individual-contract-evaluation)
+
+---
+
+## Input Directory Structure
+
+```
+<input-dir>/
+├── portfolio.csv                          ← valuation engine fields only
+├── contract_metadata.csv                  ← descriptive fields (NOT fed into valuation)
+├── runs.json                              ← one or more run requests
+└── scenarios/
+    ├── scenario_set.json                  ← scenario metadata + model parameters
+    └── riskfactors/
+        ├── interest_rate_prior.csv        ← rates for t < calcDateIndex
+        └── interest_rate_after.csv        ← rates for t ≥ calcDateIndex
+```
+
+See the working example in `CLI/PamMonteCarlo50Y/samples/input/`.
+
+---
+
+## portfolio.csv Schema
+
+Contains **only the fields required by the valuation kernel**.
+Additional descriptive fields belong in `contract_metadata.csv`.
+
+### Required Columns
+
+| Column | Type | Example | Description |
+|--------|------|---------|-------------|
+| `ContractId` | string | `PAM_000000` | Unique contract identifier (primary key) |
+| `InitialExchangeDate` | date | `2020-01-01` | Contract start date (ISO 8601 `YYYY-MM-DD`) |
+| `MaturityDate` | date | `2025-01-01` | Maturity date (ISO 8601 `YYYY-MM-DD`) |
+| `NotionalPrincipal` | decimal | `500000.00` | Face value (positive) |
+| `NominalInterestRate` | decimal | `0.0500` | Annual rate, decimal (5% = `0.0500`) |
+| `CycleOfInterestPayment` | string | `P1YL1` | Payment frequency (`P1ML1`/`P3ML1`/`P1YL1`) |
+
+### Optional Columns
+
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `RateSpread` | decimal | `0.0` | Spread added to floating index |
+| `MarketObjectCodeOfRateReset` | string | _(empty = fixed)_ | Risk-factor id for floating-rate resets (e.g., `USD_LIBOR_3M`) |
+| `CycleOfRateReset` | string | _(empty)_ | Rate-reset frequency (e.g., `P3ML1`) |
+
+### Loader Defaults (fields not in CSV)
+
+| Field | Default value |
+|-------|--------------|
+| `Currency` | `USD` |
+| `ContractRole` | `RPA` |
+| `StatusDate` | = `InitialExchangeDate` |
+| `CycleAnchorDateOfInterestPayment` | = `InitialExchangeDate` |
+| `CycleAnchorDateOfRateReset` | = `InitialExchangeDate` |
+| `AccruedInterest` | `0.0` |
+| `RateMultiplier` | `1.0` |
+| `DayCountConvention` | `A_365` |
+| `BusinessDayConvention` | `NOS` |
+| `Calendar` | `NC` |
+| `NotionalScalingMultiplier` | `1.0` |
+| `InterestScalingMultiplier` | `1.0` |
+
+### Example
+
+```csv
+ContractId,InitialExchangeDate,MaturityDate,NotionalPrincipal,NominalInterestRate,CycleOfInterestPayment,RateSpread,MarketObjectCodeOfRateReset,CycleOfRateReset
+PAM_000000,2020-01-01,2022-01-01,500000.00,0.0500,P1YL1,0.0000,,
+PAM_000001,2020-01-01,2022-01-01,250000.00,0.0430,P3ML1,0.0000,,
+PAM_000002,2020-01-01,2021-01-01,1000000.00,0.0500,P1YL1,0.0100,USD_LIBOR_3M,P3ML1
+```
+
+---
+
+## contract_metadata.csv Schema
+
+Contains **descriptive fields** that are **NOT** fed into the valuation engine.
+Used exclusively as an analysis join target in Excel / PowerQuery.
+
+### Required Columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `ContractId` | string | Join key → must match `portfolio.csv` |
+
+### Recommended Columns (user-defined)
+
+| Column | Type | Example | Description |
+|--------|------|---------|-------------|
+| `Segment` | string | `Corporate` | Business segment |
+| `Region` | string | `Americas` | Geographic region |
+| `ProductLine` | string | `TermLoan` | Product category |
+| `Currency` | string | `USD` | Reporting currency |
+| `Broker` | string | `BrokerAlpha` | Originating broker |
+| `Underwriter` | string | `UW_West` | Underwriter team |
+
+Any additional columns are passed through to grouped-summary outputs.
+
+### Example
+
+```csv
+ContractId,Segment,Region,ProductLine,Currency,Broker,Underwriter
+PAM_000000,Corporate,Americas,TermLoan,USD,BrokerAlpha,UW_West
+PAM_000001,Retail,EMEA,PersonalLoan,USD,BrokerBeta,UW_East
+PAM_000002,Corporate,APAC,FloatingLoan,USD,BrokerGamma,UW_East
+```
+
+---
+
+## scenario_set.json Schema
+
+Specifies scenario metadata and points to the risk-factor CSV arrays.
+
+```json
+{
+  "scenarioSetId": "vasicek_3s_24m_seed12345",
+  "description": "3 Vasicek scenarios × 24 monthly steps (2-year horizon)",
+  "numScenarios": 3,
+  "numMonths": 24,
+  "seed": 12346,
+  "model": {
+    "type": "Vasicek",
+    "kappa": 0.15,
+    "theta": 0.04,
+    "sigma": 0.02,
+    "r0": 0.03
+  },
+  "riskFactors": [
+    {
+      "id": "USD_LIBOR_3M",
+      "type": "InterestRate",
+      "priorFile": "riskfactors/interest_rate_prior.csv",
+      "afterFile": "riskfactors/interest_rate_after.csv"
+    }
+  ]
+}
+```
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scenarioSetId` | string | Unique scenario set identifier |
+| `numScenarios` | int | Number of Monte Carlo paths |
+| `numMonths` | int | Horizon in monthly time steps |
+| `seed` | ulong | XorShift64 seed for the rate generator |
+| `model.type` | string | Interest-rate model (`Vasicek`) |
+| `model.kappa` | double | Mean-reversion speed |
+| `model.theta` | double | Long-run mean rate |
+| `model.sigma` | double | Volatility |
+| `model.r0` | double | Initial short rate |
+| `riskFactors[].id` | string | Market object code referenced in `portfolio.csv` |
+| `riskFactors[].priorFile` | string | Relative path to prior-rates CSV |
+| `riskFactors[].afterFile` | string | Relative path to after-rates CSV |
+
+---
+
+## Risk Factor Arrays (CSV)
+
+### `interest_rate_after.csv`
+
+Full scenario × time rate matrix for `t ≥ calcDateIndex`.
+
+```
+scenarioIndex,timeIndex,shortRate,discountFactor
+0,0,0.03000000,1.00000000
+0,1,0.01568774,0.99869354
+...
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `scenarioIndex` | int | 0-based scenario index (0 to `numScenarios-1`) |
+| `timeIndex` | int | 0-based month index (0 to `numMonths-1`) |
+| `shortRate` | double | Annualised short rate `r(s,t)` |
+| `discountFactor` | double | `DF(s,t) = exp(−∑ r(s,i)·dt)` cumulative discount factor |
+
+Rows must be sorted by `(scenarioIndex, timeIndex)`.
+Total rows = `numScenarios × numMonths`.
+
+### `interest_rate_prior.csv`
+
+Same format as `interest_rate_after.csv` but only for `t < calcDateIndex`.
+**Empty (header only) when `calcDateIndex = 0`** (pure forward simulation).
+
+---
+
+## runs.json Schema
+
+Array of `RunRequest` objects. Each run can carry an optional `outputOptions`
+block that controls exactly which output files are written for that run,
+overriding the global CLI reporting flags.
+
+```json
+[
+  {
+    "id": "proof_fwd",
+    "description": "Full portfolio run — all outputs including cashflow time series",
+    "contractStart": 0,
+    "contractCount": 0,
+    "scenarioStart": 0,
+    "scenarioCount": 0,
+    "calcDateIndex": 0,
+    "outputOptions": {
+      "reporting": true,
+      "exportPvFact": true,
+      "exportCashflowTimeSeries": true,
+      "contractSampleSize": 0,
+      "scenarioSampleSize": 0
+    }
+  },
+  {
+    "id": "proof_slice",
+    "description": "Contract subset [0,3) — PV summary only",
+    "contractStart": 0,
+    "contractCount": 3,
+    "scenarioStart": 0,
+    "scenarioCount": 0,
+    "calcDateIndex": 0,
+    "outputOptions": {
+      "reporting": true,
+      "exportPvFact": false,
+      "exportCashflowTimeSeries": false
+    }
+  }
+]
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `id` | `run0` | Run identifier (used in output file names) |
+| `description` | `""` | Human-readable description |
+| `contractStart` | `0` | First contract index (0-based) |
+| `contractCount` | `0` | Number of contracts (0 = all from `contractStart`) |
+| `scenarioStart` | `0` | First scenario index (0-based) |
+| `scenarioCount` | `0` | Number of scenarios (0 = all from `scenarioStart`) |
+| `calcDateIndex` | `0` | Month index for prior/after boundary (0 = pure forward) |
+
+### `outputOptions` fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `reporting` | `true` | Write contract_summary, portfolio_by_scenario, grouped summaries |
+| `exportPvFact` | `false` | Write `fact_results_long.csv` (PV per contract × scenario) |
+| `exportCashflowTimeSeries` | `false` | Write `cashflow_timeseries.csv` (full event-level detail: contract × scenario × time) |
+| `contractSampleSize` | `0` | Max contracts in exports (0 = all) |
+| `scenarioSampleSize` | `0` | Max scenarios in exports (0 = all) |
+
+---
+
+## Output Directory Structure
+
+```
+<output-dir>/
+├── runs.csv                                 ← run dimension table
+├── {runId}_cpu_summary.json                 ← timing + PV statistics per run/backend
+├── {runId}_cpu_portfolio_pv_by_scenario.csv ← per-scenario portfolio PV (legacy)
+├── {runId}_cpu_contract_pv_sample.csv       ← small contract×scenario sample (legacy)
+│
+│   (when reporting=true in outputOptions or --reporting true:)
+├── {runId}_cpu_portfolio_by_scenario.csv    ← RunId, ScenarioId, PortfolioPV
+├── {runId}_cpu_contract_summary.csv         ← per-contract statistics across scenarios
+├── {runId}_cpu_fact_results_long.csv        ← PV per contract×scenario (when exportPvFact=true)
+├── {runId}_cpu_cashflow_timeseries.csv      ← contract×scenario×time cashflow detail (when exportCashflowTimeSeries=true)
+├── {runId}_cpu_grouped_by_segment.csv       ← grouped summary (when --metadata supplied)
+├── {runId}_cpu_grouped_by_region.csv        ← grouped summary (when --metadata supplied)
+└── _README.txt                              ← auto-generated join guide
+```
+
+---
+
+## Output File Schemas
+
+### `runs.csv`
+
+Run dimension table. Appended each run.
+
+```csv
+RunId,CalcDateIndex,ContractCount,ScenarioCount,Backend,Timestamp
+proof_fwd_cpu,0,5,3,cpu,2024-01-15T10:30:00.000Z
+```
+
+### `{runId}_contract_summary.csv`
+
+Per-contract statistics across all scenarios. **Primary key: `(RunId, ContractId)`.**
+
+```csv
+RunId,ContractId,MeanPV,StdPV,P05,P50,P95,VaR99,ES99
+proof_fwd_cpu,PAM_000000,487234.12,3421.55,480100.00,487000.00,493500.00,...
+proof_fwd_cpu,PAM_000001,241890.34,2100.22,...
+```
+
+**JOIN** this file with `contract_metadata.csv` on `ContractId` to analyse results
+by Segment, Region, ProductLine, etc.
+
+### `{runId}_portfolio_by_scenario.csv`
+
+Per-scenario portfolio PV (sum of all contracts). **Primary key: `(RunId, ScenarioId)`.**
+
+```csv
+RunId,ScenarioId,PortfolioPV
+proof_fwd_cpu,0,1934567.89
+proof_fwd_cpu,1,1921345.67
+proof_fwd_cpu,2,1841234.56
+```
+
+### `{runId}_fact_results_long.csv`
+
+Long-format fact table with individual PV per `(RunId, ContractId, ScenarioId)`.
+**This table proves every contract is evaluated individually per scenario.**
+
+```csv
+RunId,ContractId,ScenarioId,Measure,Value
+proof_fwd_cpu,PAM_000000,0,PV,489234.123456
+proof_fwd_cpu,PAM_000000,1,PV,483456.789012
+proof_fwd_cpu,PAM_000000,2,PV,472345.678901
+proof_fwd_cpu,PAM_000001,0,PV,243210.456789
+...
+```
+
+**JOIN** on `ContractId` → `contract_metadata.csv` for full drill-down.
+
+### `{runId}_cashflow_timeseries.csv`
+
+Full cashflow waterfall: one row per (contract, scenario, cashflow event).
+**Primary key: `(RunId, ContractId, ScenarioId, EventDate, EventType)`.**
+
+```csv
+RunId,ContractId,ScenarioId,EventDate,TimeIndex,EventType,UndiscountedCashflow,DiscountFactor,DiscountedCashflow
+proof_fwd_cpu,PAM_000000,0,2020-01-01,0,IED,-500000.000000,1.00000000,-500000.000000
+proof_fwd_cpu,PAM_000000,0,2021-01-01,12,IP,25000.000000,0.97020304,24255.076000
+proof_fwd_cpu,PAM_000000,0,2022-01-01,24,MD,500000.000000,0.94103122,470515.610000
+...
+```
+
+| Column | Description |
+|--------|-------------|
+| `RunId` | Run identifier (joins to `runs.csv`) |
+| `ContractId` | Contract identifier (joins to `contract_metadata.csv`) |
+| `ScenarioId` | Scenario index (0-based absolute) |
+| `EventDate` | Calendar date of the event (yyyy-MM-dd) |
+| `TimeIndex` | Month index on the Vasicek grid (0 = base date) |
+| `EventType` | ACTUS event: IED (initial exchange), IP (interest payment), MD (maturity), RR (rate reset), etc. |
+| `UndiscountedCashflow` | Raw cashflow amount before discounting |
+| `DiscountFactor` | Vasicek DF at (ScenarioId, TimeIndex) |
+| `DiscountedCashflow` | UndiscountedCashflow × DiscountFactor (contribution to PV) |
+
+Use this table to:
+- Plot the cashflow profile of any contract over time per scenario
+- Compare discount factors across scenarios at each time step
+- Verify that `sum(DiscountedCashflow)` per (ContractId, ScenarioId) equals the PV in `fact_results_long.csv`
+**JOIN** on `RunId` → `runs.csv` for run metadata.
+
+---
+
+## How to Run the CLI
+
+### Using the sample runner (recommended)
+
+```bash
+# Linux / macOS
+cd CLI/PamMonteCarlo50Y/samples
+chmod +x run_sample.sh
+./run_sample.sh
+
+# Windows PowerShell
+cd CLI\PamMonteCarlo50Y\samples
+.\run_sample.ps1
+```
+
+### Generate and export a synthetic portfolio
+
+Use `--export-portfolio true` to capture a synthetically generated portfolio to
+`portfolio.csv` in the output directory.  You can then re-run it with `--input`.
+
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --backend cpu --contracts 500 --scenarios 200 --months 120 --seed 42 --export-portfolio true --out ./generated
+```
+
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --input ./generated --backend cpu --out ./rerun_output --reporting true --export-fact true
+```
+
+The exported `portfolio.csv` uses the stable input-directory format and can be
+opened directly in Excel or edited before re-use.
+
+### Using the CLI directly with `--input`
+
+```
+dotnet run --project CLI/PamMonteCarlo50Y -- --input CLI/PamMonteCarlo50Y/samples/input --backend cpu --out ./my_output --reporting true --export-fact true
+```
+
+### CLI options for input-directory mode
+
+| Option | Description |
+|--------|-------------|
+| `--input <dir>` | Input directory containing `portfolio.csv`, `scenarios/`, and optionally `runs.json` |
+| `--backend cpu\|gpu\|both` | Execution backend (default: `both`) |
+| `--out <dir>` | Output directory (default: `./out`) |
+| `--export-portfolio true` | Write the generated/loaded portfolio to `portfolio.csv` in the output directory for re-use with `--input` |
+| `--reporting true` | Enable Excel-friendly CSV exports |
+| `--export-fact true` | Also write `fact_results_long.csv` (per-contract × per-scenario) |
+| `--metadata <path>` | Path to `contract_metadata.csv` for grouped summaries |
+
+**Backwards compatibility**: All existing flags still work when `--input` is omitted;
+the synthetic portfolio generator is used as before.
+
+---
+
+## Opening Outputs in Excel
+
+### Step 1 — Load result files
+
+1. Open Excel → **Data → Get Data → From Text/CSV**
+2. Load `{runId}_cpu_contract_summary.csv`
+3. Load `contract_metadata.csv` (from the input directory)
+4. Load `{runId}_cpu_fact_results_long.csv` (optional, for scenario drill-down)
+5. Load `runs.csv` (optional, for run metadata)
+
+### Step 2 — Merge on ContractId
+
+In **Power Query Editor**:
+
+1. Select the `contract_summary` query
+2. **Home → Merge Queries** (or `Merge Queries as New`)
+3. Left table: `contract_summary` key = `ContractId`
+4. Right table: `contract_metadata` key = `ContractId`
+5. Join kind: **Left Outer**
+6. Click the **expand** icon → select `Segment`, `Region`, `ProductLine`, `Broker`, etc.
+7. **Close & Load**
+
+### Step 3 — Build PivotTables
+
+Go to **Insert → PivotTable** (from the merged query):
+
+| Analysis goal | Rows | Values |
+|---------------|------|--------|
+| Mean PV by Region | `Region` | `MeanPV` (Average) |
+| VaR99 by Segment | `Segment` | `VaR99` (Sum) |
+| Portfolio P95 by Run | `RunId` | `P95` (Average) |
+| Contract count by Broker | `Broker` | `ContractId` (Count) |
+
+### Step 4 — Scenario drill-down
+
+1. Load `fact_results_long.csv`
+2. Merge with `contract_metadata` on `ContractId`
+3. Merge with `runs.csv` on `RunId`
+4. PivotTable with:
+   - Rows: `Segment` + `ContractId`
+   - Columns: `ScenarioId`
+   - Values: `Value` (PV)
+5. Add slicers for `Region`, `ProductLine`, `RunId`
+
+---
+
+## Validating Individual Contract Evaluation
+
+The `fact_results_long.csv` file is the primary validation artifact.
+Use the following checks:
+
+### Check 1 — Every contract appears
+
+```
+Expected rows = numContracts × numScenarios × 1 (Measure = "PV")
+```
+
+In Excel:
+1. Load `fact_results_long.csv`
+2. **Data → PivotTable**
+3. Rows: `ContractId`, Values: `ScenarioId` (Count)
+4. Verify each `ContractId` has exactly `numScenarios` rows
+
+### Check 2 — PVs differ across scenarios
+
+Sort `fact_results_long.csv` by `(ContractId, ScenarioId)`.
+The `Value` column should vary across scenarios, proving the engine uses per-scenario
+discount factors and rate paths (not a single deterministic PV).
+
+### Check 3 — Contract-level granularity via contract_summary
+
+In `contract_summary.csv`:
+- `StdPV > 0` for every contract confirms cross-scenario variance
+- `P05 < P50 < P95` confirms the distribution is properly ordered
+
+### Check 4 — Sliced run matches full run
+
+Compare `proof_slice` (contracts 0–2) against the corresponding rows in `proof_fwd`:
+- `proof_slice_cpu_contract_summary.csv` rows for `PAM_000000`, `PAM_000001`, `PAM_000002`
+  must match the same rows in `proof_fwd_cpu_contract_summary.csv` (within floating-point tolerance)
+- This proves that slicing does not affect individual contract PVs
+
+### Check 5 — Determinism
+
+Run the sample twice and diff the output files:
+
+```bash
+./run_sample.sh --out ./out1
+./run_sample.sh --out ./out2
+diff out1/proof_fwd_cpu_fact_results_long.csv out2/proof_fwd_cpu_fact_results_long.csv
+# Expected: no differences
+```
+
+---
+
+## Determinism Guarantee
+
+- **Same input directory** → **identical outputs** across runs and platforms.
+- Portfolio seed controls contract generation.
+- Scenario seed (`scenario_set.json:seed`) controls all rate paths via XorShift64 + Box-Muller.
+- No thread-level non-determinism in generators.
+- Floating-point operations are deterministic on IEEE 754 compliant hardware.

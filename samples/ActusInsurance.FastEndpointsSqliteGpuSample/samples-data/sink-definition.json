@@ -1,0 +1,12 @@
+{
+  "sinkId": "sample-sink-001",
+  "description": "Default CSV sink — portfolio + contract level aggregates",
+  "outputFormat": "csv",
+  "aggregations": [
+    "portfolio_pv_by_scenario",
+    "contract_mean_pv",
+    "contract_pv_percentiles"
+  ],
+  "percentiles": [0.05, 0.25, 0.50, 0.75, 0.95],
+  "includeFactTable": false
+}

@@ -1,0 +1,140 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  release:
+    types: [ published ]
+
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    environment: copilot
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - name: "actus-insurance-api"
+            path: "./samples/ActusInsurance.FastEndpointsSqliteGpuSample"
+            dockerfile: "Dockerfile"
+            type: "web"
+          - name: "actus-designer"
+            path: "./samples/actus-designer"
+            dockerfile: "Dockerfile"
+            type: "frontend"
+          - name: "scenario-calc-demo"
+            path: "."
+            dockerfile: "Dockerfile.cli"
+            type: "cli"
+            build_args: |
+              PROJECT=ScenarioCpuGpuCalcDateDemo
+              PROJECT_PATH=samples/ScenarioCpuGpuCalcDateDemo
+          - name: "pam-monte-carlo"
+            path: "."
+            dockerfile: "Dockerfile.cli"
+            type: "cli"
+            build_args: |
+              PROJECT=PamMonteCarlo50Y
+              PROJECT_PATH=CLI/PamMonteCarlo50Y
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET (for .NET projects)
+        if: matrix.project.type != 'frontend'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Setup Node.js (for Frontend)
+        if: matrix.project.type == 'frontend'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+          cache: 'npm'
+          cache-dependency-path: '${{ matrix.project.path }}/package-lock.json'
+
+      - name: Restore .NET dependencies (Web projects)
+        if: matrix.project.type == 'web'
+        run: dotnet restore
+        working-directory: ${{ matrix.project.path }}
+        env:
+          PKG_TOKEN: ${{ secrets.PKG_TOKEN }}
+
+      - name: Restore .NET dependencies (CLI projects) 
+        if: matrix.project.type == 'cli'
+        run: dotnet restore
+        env:
+          PKG_TOKEN: ${{ secrets.PKG_TOKEN }}
+
+      - name: Build .NET project (Web)
+        if: matrix.project.type == 'web'
+        run: dotnet build --no-restore
+        working-directory: ${{ matrix.project.path }}
+
+      - name: Build .NET project (CLI)
+        if: matrix.project.type == 'cli'
+        run: dotnet build --no-restore
+
+      - name: Install Node.js dependencies
+        if: matrix.project.type == 'frontend'
+        run: npm ci
+        working-directory: ${{ matrix.project.path }}
+
+      - name: Build Node.js project
+        if: matrix.project.type == 'frontend'
+        run: npm run build
+        working-directory: ${{ matrix.project.path }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_USERNAME }}/${{ matrix.project.name }}
+          tags: |
+            # Preview builds on main branch
+            type=ref,event=branch,suffix=-preview
+            type=sha,prefix={{branch}}-,suffix=-preview
+            
+            # Stable builds on release
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            
+            # Latest tag for releases
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.project.path }}
+          file: ${{ matrix.project.path }}/${{ matrix.project.dockerfile }}
+          build-args: |
+            PKG_TOKEN=${{ secrets.PKG_TOKEN }}
+            ${{ matrix.project.build_args || '' }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

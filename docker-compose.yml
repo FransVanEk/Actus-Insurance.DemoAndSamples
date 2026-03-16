@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # ACTUS Insurance API Service
+  actus-api:
+    image: neobluetechlabs/actus-insurance-api:latest
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - actus-data:/app/data
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - Calculation__PreferGpu=${PREFER_GPU:-false}
+      - Logging__LogLevel__Microsoft.EntityFrameworkCore=Warning
+    networks:
+      - actus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ACTUS Designer Frontend Service  
+  actus-designer:
+    image: neobluetechlabs/actus-designer:latest
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      # Public API URL - empty to use Next.js proxy
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      # Server-side API URL for Next.js routes - uses Docker service name
+      - API_BASE_URL=http://actus-api:8080
+      - API_KEY=${API_KEY:-dev-api-key-change-me}
+      - API_USERNAME=${API_USERNAME:-}
+      - API_PASSWORD=${API_PASSWORD:-}
+      - API_TENANT_ID=${API_TENANT_ID:-}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      - actus-api
+    networks:
+      - actus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  actus-network:
+    driver: bridge
+
+volumes:
+  actus-data:
+    driver: local

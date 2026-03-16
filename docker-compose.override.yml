@@ -1,0 +1,21 @@
+# Development overrides for Docker Compose
+# This file is loaded automatically by docker-compose
+version: '3.8'
+
+services:
+  actus-api:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Logging__LogLevel__Default=Information
+    volumes:
+      - ./samples/ActusInsurance.FastEndpointsSqliteGpuSample:/app/src:ro
+  
+  actus-designer:
+    environment:
+      - NODE_ENV=development
+      # In development, can use external localhost URL for debugging
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - API_BASE_URL=http://actus-api:8080
+    volumes:
+      - ./samples/actus-designer:/app/src:ro
+      - /app/src/node_modules  # Prevent node_modules from being overwritten

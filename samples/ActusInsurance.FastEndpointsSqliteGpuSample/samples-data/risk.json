@@ -1,0 +1,12 @@
+{
+  "riskModelId": "sample-risk-001",
+  "description": "Sample Vasicek interest-rate risk model",
+  "model": "Vasicek",
+  "parameters": {
+    "kappa": 0.15,
+    "theta": 0.04,
+    "sigma": 0.02,
+    "r0": 0.03
+  },
+  "referenceRate": "USD_LIBOR_3M"
+}

@@ -1,0 +1,73 @@
+# Shared Dockerfile for CLI projects
+# 
+# Usage Examples:
+# 1. For PamMonteCarlo50Y:
+#    docker build --build-arg PROJECT=PamMonteCarlo50Y --build-arg PROJECT_PATH=CLI/PamMonteCarlo50Y -f Dockerfile.cli .
+# 
+# 2. For ScenarioCpuGpuCalcDateDemo: 
+#    docker build --build-arg PROJECT=ScenarioCpuGpuCalcDateDemo --build-arg PROJECT_PATH=samples/ScenarioCpuGpuCalcDateDemo -f Dockerfile.cli .
+#
+# Alternative: Use individual Dockerfiles in each project directory for simpler builds
+
+ARG PROJECT
+ARG PROJECT_PATH
+
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+ARG PROJECT
+ARG PROJECT_PATH
+ARG PKG_TOKEN
+
+WORKDIR /src
+
+# Copy solution file for dependency resolution
+COPY *.slnx ./
+COPY nuget.config ./
+
+# Copy the specific project
+COPY ${PROJECT_PATH}/ ./${PROJECT}/
+
+# Configure NuGet with private token if provided
+RUN if [ ! -z "$PKG_TOKEN" ]; then \
+      echo "Configuring GitHub NuGet source..." && \
+      (dotnet nuget list source | grep -q "github" || \
+       dotnet nuget add source "https://nuget.pkg.github.com/FransVanEk/index.json" \
+         --name "github" \
+         --username "FransVanEk" \
+         --password "$PKG_TOKEN" \
+         --store-password-in-clear-text) || \
+      echo "Warning: Failed to configure GitHub NuGet source, continuing with existing sources"; \
+    fi
+
+# Restore dependencies for the specific project
+WORKDIR /src/${PROJECT}
+RUN dotnet restore
+
+# Build and publish the project
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/runtime:9.0 AS runtime
+ARG PROJECT
+ENV PROJECT_NAME=${PROJECT}
+
+WORKDIR /app
+
+# Create directory for input/output data
+RUN mkdir -p /app/data
+
+# Copy published app
+COPY --from=build /app/publish ./
+
+# Create samples directory (will be empty but can be populated via volume mount)
+RUN mkdir -p ./samples
+
+# Volume for data persistence
+VOLUME ["/app/data"]
+
+# Set entrypoint dynamically based on project
+RUN echo "#!/bin/sh" > /entrypoint.sh && \
+    echo "exec dotnet ${PROJECT}.dll \"\$@\"" >> /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
